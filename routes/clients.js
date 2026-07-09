@@ -1,0 +1,27 @@
+const express = require('express');
+const { getClients, addClient, deleteClient } = require('../services/clients');
+
+const router = express.Router();
+
+router.get('/clients', (req, res) => {
+  res.json(getClients());
+});
+
+router.post('/clients', (req, res) => {
+  const { name, ga4PropertyId, sheetId } = req.body || {};
+  if (!name || !name.trim() || !ga4PropertyId || !ga4PropertyId.trim()) {
+    return res.status(400).json({ error: 'Client name and GA4 Property ID are required.' });
+  }
+  const client = addClient({ name: name.trim(), ga4PropertyId: ga4PropertyId.trim(), sheetId: (sheetId || '').trim() });
+  res.status(201).json(client);
+});
+
+router.delete('/clients/:id', (req, res) => {
+  const deleted = deleteClient(req.params.id);
+  if (!deleted) {
+    return res.status(404).json({ error: 'Client not found.' });
+  }
+  res.status(204).send();
+});
+
+module.exports = router;

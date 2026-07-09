@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReportGen</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>ReportGen</h1>
+      <p class="subtitle">Monthly digital marketing reports, straight from Google Analytics 4</p>
+    </header>
+
+    <div id="alert" class="alert" hidden></div>
+
+    <section id="card-clients" class="card" hidden>
+      <h2>Clients</h2>
+      <div class="form-row">
+        <div class="field">
+          <label for="client-select">Active Client</label>
+          <select id="client-select"></select>
+        </div>
+        <button id="add-client-btn" class="btn btn-secondary" type="button">+ Add Client</button>
+        <button id="delete-client-btn" class="btn btn-danger" type="button">Remove Client</button>
+      </div>
+      <p class="active-client-label">Reporting on: <span id="active-client-name">—</span></p>
+
+      <form id="add-client-form" class="add-client-form" hidden>
+        <div class="field">
+          <label for="new-client-name">Client Name</label>
+          <input id="new-client-name" type="text" placeholder="Acme Corp" />
+        </div>
+        <div class="field">
+          <label for="new-client-ga4">GA4 Property ID</label>
+          <input id="new-client-ga4" type="text" placeholder="123456789" />
+        </div>
+        <div class="field">
+          <label for="new-client-sheet">Google Sheet ID</label>
+          <input id="new-client-sheet" type="text" placeholder="Optional — for SEO data" />
+        </div>
+        <div class="form-actions">
+          <button id="save-client-btn" class="btn btn-primary" type="submit">Save Client</button>
+          <button id="cancel-client-btn" class="btn btn-secondary" type="button">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="step-signin" class="card" hidden>
+      <h2>Step 1 — Sign in with Google</h2>
+      <p>Connect your Google account to pull data from GA4. You only need to do this once.</p>
+      <a id="signin-btn" class="btn btn-primary" href="/auth/google">Sign in with Google</a>
+    </section>
+
+    <section id="step-generate" class="card" hidden>
+      <h2>Step 2 — Choose Reporting Periods</h2>
+      <p class="connected-badge">Connected to Google Analytics</p>
+
+      <div class="period-columns">
+        <div class="period-column">
+          <p class="period-label">Current Period</p>
+          <div class="field">
+            <label for="current-month-select">Month</label>
+            <select id="current-month-select"></select>
+          </div>
+          <div class="field">
+            <label for="current-year-select">Year</label>
+            <select id="current-year-select"></select>
+          </div>
+        </div>
+        <div class="period-column">
+          <p class="period-label">Comparison Period</p>
+          <div class="field">
+            <label for="comparison-month-select">Month</label>
+            <select id="comparison-month-select"></select>
+          </div>
+          <div class="field">
+            <label for="comparison-year-select">Year</label>
+            <select id="comparison-year-select"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button id="generate-btn" class="btn btn-primary" disabled>Generate Report</button>
+      </div>
+
+      <div id="warnings" class="warnings" hidden></div>
+      <div id="status" class="status" hidden></div>
+    </section>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
