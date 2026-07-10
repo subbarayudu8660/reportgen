@@ -1,5 +1,5 @@
 const express = require('express');
-const { getFullReportData } = require('../services/ga4');
+const { getFullReportData, mapGa4Error } = require('../services/ga4');
 const { getSeoOverview } = require('../services/sheets');
 const { generateReportPptx, monthLabel } = require('../services/pptx');
 const { getClientById } = require('../services/clients');
@@ -46,7 +46,7 @@ router.post('/generate-report', async (req, res) => {
     const warnings = [];
     if (!gaData.hasAnyGa4Data) {
       warnings.push(
-        `No data found for ${currentLabel} in Google Analytics. This period may be before tracking was set up, or no traffic was recorded.`
+        `No data found in GA4 for ${currentLabel}. This period may be before tracking was set up, or no traffic was recorded during this time.`
       );
     }
     if (!seoData.keywordRankings.hasData) {
@@ -76,10 +76,9 @@ router.post('/generate-report', async (req, res) => {
       return res.status(401).json({ error: e.message, code: e.code });
     }
     if (e.code === 'GA4_API_ERROR') {
-      console.error('GA4 API error:', e.status, e.message);
-      return res.status(502).json({
-        error: 'Google Analytics returned an error while fetching data for this period. Please try again or check the GA4 property configuration.',
-      });
+      console.error('GA4 API error:', e.status, e.apiErrorStatus, e.message);
+      const { httpStatus, message } = mapGa4Error(e);
+      return res.status(httpStatus).json({ error: message });
     }
     if (e.code === 'SHEETS_API_ERROR') {
       console.error('Sheets API error:', e.status, e.message);

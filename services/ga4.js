@@ -20,13 +20,68 @@ async function runReport(body, propertyId) {
 
   if (!res.ok) {
     const text = await res.text();
-    const err = new Error(`GA4 API request failed (${res.status}): ${text}`);
+    let apiErrorStatus = null;
+    let apiErrorMessage = text;
+    try {
+      const parsed = JSON.parse(text);
+      apiErrorStatus = parsed.error && parsed.error.status;
+      apiErrorMessage = (parsed.error && parsed.error.message) || text;
+    } catch (parseErr) {
+      // Response body wasn't JSON — fall back to the raw text above.
+    }
+    const err = new Error(`GA4 API request failed (${res.status}): ${apiErrorMessage}`);
     err.code = 'GA4_API_ERROR';
     err.status = res.status;
+    err.apiErrorStatus = apiErrorStatus;
     throw err;
   }
 
   return res.json();
+}
+
+// Maps a raw GA4_API_ERROR into a specific, user-actionable message + HTTP status.
+// `err` must have `.status` (HTTP status from the GA4 API) and optionally `.apiErrorStatus`
+// (the GA4 API's own error status string, e.g. "PERMISSION_DENIED").
+function mapGa4Error(err) {
+  const status = err.status;
+  const apiStatus = err.apiErrorStatus;
+
+  if (status === 403 || apiStatus === 'PERMISSION_DENIED') {
+    return {
+      httpStatus: 403,
+      message:
+        'Your Google account does not have access to this GA4 property. Ask the property owner to add your email as a Viewer in GA4 → Admin → Property Access Management.',
+    };
+  }
+  if (status === 404 || apiStatus === 'NOT_FOUND') {
+    return {
+      httpStatus: 404,
+      message:
+        'The GA4 Property ID you entered does not exist. Please double-check the Property ID in your client settings — it should be a 9-digit number found in GA4 → Admin → Property Settings.',
+    };
+  }
+  if (status === 400 || apiStatus === 'INVALID_ARGUMENT') {
+    return {
+      httpStatus: 400,
+      message: 'The GA4 Property ID format is invalid. It should be a plain 9-digit number with no extra characters.',
+    };
+  }
+  if (status === 429 || apiStatus === 'RESOURCE_EXHAUSTED') {
+    return {
+      httpStatus: 429,
+      message: 'Google Analytics API quota exceeded. Please wait a few minutes and try again.',
+    };
+  }
+  if (status === 401 || apiStatus === 'UNAUTHENTICATED') {
+    return {
+      httpStatus: 401,
+      message: 'Your Google session has expired. Please sign out and sign in again.',
+    };
+  }
+  return {
+    httpStatus: 502,
+    message: `Google Analytics returned an unexpected error (${status || 'unknown'}). Please try again or contact support.`,
+  };
 }
 
 function monthDateRange(monthStr) {
@@ -322,4 +377,5 @@ async function getFullReportData(currentMonth, comparisonMonth, propertyId) {
 module.exports = {
   getFullReportData,
   monthDateRange,
+  mapGa4Error,
 };
