@@ -5,8 +5,8 @@ const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 const KEYWORD_SHEET_RANGE = "'Keyword Ranking Report'!A10:ZZ2000";
 const KPI_SHEET_RANGE = "'KPI_2'!A1:ZZ500";
 
-function ensureSheetsScope() {
-  if (!hasSheetsScope()) {
+function ensureSheetsScope(email) {
+  if (!hasSheetsScope(email)) {
     const err = new Error(
       'Google Sheets access has not been authorized on the current session. Please sign in with Google again to grant Sheets access.'
     );
@@ -15,11 +15,11 @@ function ensureSheetsScope() {
   }
 }
 
-async function getSheetValues(range, sheetId) {
+async function getSheetValues(range, sheetId, email) {
   if (!sheetId) {
     throw new Error('No Google Sheet ID configured for the active client.');
   }
-  const client = await getAuthorizedClient();
+  const client = await getAuthorizedClient(email);
   const accessToken = await client.getAccessToken();
 
   const url = `${SHEETS_API_BASE}/${sheetId}/values/${encodeURIComponent(range)}?majorDimension=ROWS`;
@@ -89,9 +89,9 @@ function classifyRank(raw) {
   return 'pending';
 }
 
-async function getKeywordRankings(currentMonth, comparisonMonth, sheetId) {
-  ensureSheetsScope();
-  const values = await getSheetValues(KEYWORD_SHEET_RANGE, sheetId);
+async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email) {
+  ensureSheetsScope(email);
+  const values = await getSheetValues(KEYWORD_SHEET_RANGE, sheetId, email);
 
   if (values.length === 0) {
     return { current: emptyBuckets(), previous: emptyBuckets(), hasData: false };
@@ -120,9 +120,9 @@ async function getKeywordRankings(currentMonth, comparisonMonth, sheetId) {
   };
 }
 
-async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId) {
-  ensureSheetsScope();
-  const values = await getSheetValues(KPI_SHEET_RANGE, sheetId);
+async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email) {
+  ensureSheetsScope(email);
+  const values = await getSheetValues(KPI_SHEET_RANGE, sheetId, email);
 
   if (values.length === 0) {
     return { current: 0, previous: 0, hasData: false };
@@ -159,10 +159,10 @@ function pctChange(current, previous) {
   return ((current - previous) / previous) * 100;
 }
 
-async function getSeoOverview(currentMonth, comparisonMonth, sheetId) {
+async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
   const [keywordRankings, offPage] = await Promise.all([
-    getKeywordRankings(currentMonth, comparisonMonth, sheetId),
-    getOffPageSubmissions(currentMonth, comparisonMonth, sheetId),
+    getKeywordRankings(currentMonth, comparisonMonth, sheetId, email),
+    getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email),
   ]);
 
   const bucketKeys = ['top10', 'top11_30', 'top31_50', 'top51_100', 'pending'];

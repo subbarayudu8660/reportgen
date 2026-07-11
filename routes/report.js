@@ -32,10 +32,12 @@ router.post('/generate-report', async (req, res) => {
     return res.status(400).json({ error: 'Selected client was not found. It may have been removed.' });
   }
 
+  const email = req.session.email;
+
   try {
     const [gaData, seoData] = await Promise.all([
-      getFullReportData(currentMonth, comparisonMonth, client.ga4PropertyId),
-      client.sheetId ? getSeoOverview(currentMonth, comparisonMonth, client.sheetId) : Promise.resolve(emptySeoData()),
+      getFullReportData(currentMonth, comparisonMonth, client.ga4PropertyId, email),
+      client.sheetId ? getSeoOverview(currentMonth, comparisonMonth, client.sheetId, email) : Promise.resolve(emptySeoData()),
     ]);
     const data = { ...gaData, seo: seoData, clientName: client.name };
     const buffer = await generateReportPptx(data);

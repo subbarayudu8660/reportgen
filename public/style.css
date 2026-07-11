@@ -18,6 +18,25 @@ body {
   max-width: 720px;
 }
 
+.user-bar {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 10;
+}
+
+.user-bar[hidden] {
+  display: none;
+}
+
+.user-bar-email {
+  font-size: 13px;
+  color: #6B7280;
+}
+
 header {
   margin-bottom: 30px;
   text-align: center;
@@ -93,6 +112,19 @@ h1 {
 
 .btn-secondary:hover:not(:disabled) {
   background: #F1F5FB;
+}
+
+.btn-outline {
+  background: #FFFFFF;
+  color: #1F2937;
+  border: 1px solid #D1D5DB;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: #F3F4F6;
 }
 
 .btn-danger {

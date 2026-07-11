@@ -13,6 +13,8 @@ const cancelClientBtn = document.getElementById('cancel-client-btn');
 
 const stepSignin = document.getElementById('step-signin');
 const stepGenerate = document.getElementById('step-generate');
+const userBar = document.getElementById('user-bar');
+const headerEmailEl = document.getElementById('header-email');
 
 const currentMonthSelect = document.getElementById('current-month-select');
 const currentYearSelect = document.getElementById('current-year-select');
@@ -229,7 +231,11 @@ function showWarnings(warnings) {
 
 async function checkAuthStatus() {
   const res = await fetch('/auth/status');
-  const { authenticated, needsReauth } = await res.json();
+  const { authenticated, needsReauth, email } = await res.json();
+
+  userBar.hidden = !authenticated;
+  headerEmailEl.textContent = authenticated ? email || '' : '';
+
   if (authenticated && !needsReauth) {
     stepSignin.hidden = true;
     stepGenerate.hidden = false;

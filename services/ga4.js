@@ -2,11 +2,11 @@ const { getAuthorizedClient } = require('./googleAuth');
 
 const GA4_API_BASE = 'https://analyticsdata.googleapis.com/v1beta';
 
-async function runReport(body, propertyId) {
+async function runReport(body, propertyId, email) {
   if (!propertyId) {
     throw new Error('No GA4 property ID configured for the active client.');
   }
-  const client = await getAuthorizedClient();
+  const client = await getAuthorizedClient(email);
   const accessToken = await client.getAccessToken();
 
   const res = await fetch(`${GA4_API_BASE}/properties/${propertyId}:runReport`, {
@@ -111,19 +111,20 @@ function sumMetric(report, metricName) {
   return report.rows.reduce((sum, row) => sum + Number(row.metricValues[idx].value), 0);
 }
 
-async function getMonthSessionTotal(monthStr, propertyId) {
+async function getMonthSessionTotal(monthStr, propertyId, email) {
   const { startDate, endDate } = monthDateRange(monthStr);
   const report = await runReport(
     {
       dateRanges: [{ startDate, endDate }],
       metrics: [{ name: 'sessions' }],
     },
-    propertyId
+    propertyId,
+    email
   );
   return sumMetric(report, 'sessions');
 }
 
-async function getOrganicSearchMetrics(monthStr, propertyId) {
+async function getOrganicSearchMetrics(monthStr, propertyId, email) {
   const { startDate, endDate } = monthDateRange(monthStr);
   const report = await runReport(
     {
@@ -142,7 +143,8 @@ async function getOrganicSearchMetrics(monthStr, propertyId) {
         },
       },
     },
-    propertyId
+    propertyId,
+    email
   );
 
   const rows = rowsToMap(report);
@@ -156,7 +158,7 @@ async function getOrganicSearchMetrics(monthStr, propertyId) {
   };
 }
 
-async function getEcommerceFunnel(monthStr, propertyId) {
+async function getEcommerceFunnel(monthStr, propertyId, email) {
   const { startDate, endDate } = monthDateRange(monthStr);
   const eventReport = await runReport(
     {
@@ -172,7 +174,8 @@ async function getEcommerceFunnel(monthStr, propertyId) {
         },
       },
     },
-    propertyId
+    propertyId,
+    email
   );
 
   const revenueReport = await runReport(
@@ -180,7 +183,8 @@ async function getEcommerceFunnel(monthStr, propertyId) {
       dateRanges: [{ startDate, endDate }],
       metrics: [{ name: 'purchaseRevenue' }],
     },
-    propertyId
+    propertyId,
+    email
   );
 
   const rows = rowsToMap(eventReport);
@@ -203,7 +207,7 @@ async function getEcommerceFunnel(monthStr, propertyId) {
   };
 }
 
-async function getSessionsByPagePath(monthStr, pagePaths, propertyId) {
+async function getSessionsByPagePath(monthStr, pagePaths, propertyId, email) {
   const { startDate, endDate } = monthDateRange(monthStr);
   const report = await runReport(
     {
@@ -217,7 +221,8 @@ async function getSessionsByPagePath(monthStr, pagePaths, propertyId) {
         },
       },
     },
-    propertyId
+    propertyId,
+    email
   );
 
   const rows = rowsToMap(report);
@@ -228,7 +233,7 @@ async function getSessionsByPagePath(monthStr, pagePaths, propertyId) {
   return map;
 }
 
-async function getTopLandingPages(currentMonth, comparisonMonth, propertyId) {
+async function getTopLandingPages(currentMonth, comparisonMonth, propertyId, email) {
   const { startDate, endDate } = monthDateRange(currentMonth);
   const report = await runReport(
     {
@@ -238,7 +243,8 @@ async function getTopLandingPages(currentMonth, comparisonMonth, propertyId) {
       orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
       limit: 10,
     },
-    propertyId
+    propertyId,
+    email
   );
 
   const rows = rowsToMap(report);
@@ -247,7 +253,7 @@ async function getTopLandingPages(currentMonth, comparisonMonth, propertyId) {
   }
 
   const topPaths = rows.map((r) => r.pagePath);
-  const comparisonMap = await getSessionsByPagePath(comparisonMonth, topPaths, propertyId);
+  const comparisonMap = await getSessionsByPagePath(comparisonMonth, topPaths, propertyId, email);
 
   const pages = rows
     .map((r) => {
@@ -263,7 +269,7 @@ async function getTopLandingPages(currentMonth, comparisonMonth, propertyId) {
   return { pages, hasData: true };
 }
 
-async function getTrafficOverview(currentMonth, comparisonMonth, propertyId) {
+async function getTrafficOverview(currentMonth, comparisonMonth, propertyId, email) {
   const channels = ['Organic Search', 'Referral', 'Organic Social', 'Direct'];
 
   async function fetchChannelSessions(m) {
@@ -280,7 +286,8 @@ async function getTrafficOverview(currentMonth, comparisonMonth, propertyId) {
           },
         },
       },
-      propertyId
+      propertyId,
+      email
     );
     const rows = rowsToMap(report);
     const map = {};
@@ -311,7 +318,7 @@ function pctChange(current, previous) {
   return ((current - previous) / previous) * 100;
 }
 
-async function getFullReportData(currentMonth, comparisonMonth, propertyId) {
+async function getFullReportData(currentMonth, comparisonMonth, propertyId, email) {
   const [
     organicCurr,
     organicPrev,
@@ -322,14 +329,14 @@ async function getFullReportData(currentMonth, comparisonMonth, propertyId) {
     currSessionTotal,
     prevSessionTotal,
   ] = await Promise.all([
-    getOrganicSearchMetrics(currentMonth, propertyId),
-    getOrganicSearchMetrics(comparisonMonth, propertyId),
-    getEcommerceFunnel(currentMonth, propertyId),
-    getEcommerceFunnel(comparisonMonth, propertyId),
-    getTopLandingPages(currentMonth, comparisonMonth, propertyId),
-    getTrafficOverview(currentMonth, comparisonMonth, propertyId),
-    getMonthSessionTotal(currentMonth, propertyId),
-    getMonthSessionTotal(comparisonMonth, propertyId),
+    getOrganicSearchMetrics(currentMonth, propertyId, email),
+    getOrganicSearchMetrics(comparisonMonth, propertyId, email),
+    getEcommerceFunnel(currentMonth, propertyId, email),
+    getEcommerceFunnel(comparisonMonth, propertyId, email),
+    getTopLandingPages(currentMonth, comparisonMonth, propertyId, email),
+    getTrafficOverview(currentMonth, comparisonMonth, propertyId, email),
+    getMonthSessionTotal(currentMonth, propertyId, email),
+    getMonthSessionTotal(comparisonMonth, propertyId, email),
   ]);
 
   // Whether GA4 returned *any* sessions at all for a month, independent of channel/event

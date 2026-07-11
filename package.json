@@ -11,6 +11,7 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-session": "^1.19.0",
     "google-auth-library": "^9.11.0",
     "pptxgenjs": "^3.12.0"
   },
