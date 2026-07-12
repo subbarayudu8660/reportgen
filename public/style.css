@@ -241,6 +241,46 @@ input[type="text"]:focus {
   margin: 0;
 }
 
+.paid-media-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #E9ECEF;
+}
+
+.paid-media-section summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1F2937;
+  list-style: revert;
+}
+
+.paid-media-section summary::marker {
+  color: #2563EB;
+}
+
+.optional-tag {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6B7280;
+  margin-left: 6px;
+}
+
+.paid-media-columns {
+  display: flex;
+  gap: 24px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.paid-media-column {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .status {
   margin-top: 14px;
   font-size: 13px;

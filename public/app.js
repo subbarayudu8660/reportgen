@@ -25,6 +25,22 @@ const generateBtn = document.getElementById('generate-btn');
 const statusEl = document.getElementById('status');
 const warningsEl = document.getElementById('warnings');
 
+const gaCampaigns = document.getElementById('ga-campaigns');
+const gaSpend = document.getElementById('ga-spend');
+const gaImpressions = document.getElementById('ga-impressions');
+const gaClicks = document.getElementById('ga-clicks');
+const gaConversions = document.getElementById('ga-conversions');
+const gaGst = document.getElementById('ga-gst');
+
+const maCampaigns = document.getElementById('ma-campaigns');
+const maLeads = document.getElementById('ma-leads');
+const maSpend = document.getElementById('ma-spend');
+const maImpressions = document.getElementById('ma-impressions');
+const maClicks = document.getElementById('ma-clicks');
+const maReach = document.getElementById('ma-reach');
+const maConversations = document.getElementById('ma-conversations');
+const maGst = document.getElementById('ma-gst');
+
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -252,6 +268,41 @@ async function checkAuthStatus() {
   }
 }
 
+function numOrNull(el) {
+  const raw = el.value.trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function strOrNull(el) {
+  const raw = el.value.trim();
+  return raw || null;
+}
+
+function collectPaidMedia() {
+  return {
+    googleAds: {
+      totalCampaigns: numOrNull(gaCampaigns),
+      totalSpend: strOrNull(gaSpend),
+      impressions: numOrNull(gaImpressions),
+      clicks: numOrNull(gaClicks),
+      conversions: numOrNull(gaConversions),
+      gstAmount: strOrNull(gaGst),
+    },
+    metaAds: {
+      totalCampaigns: numOrNull(maCampaigns),
+      formLeads: numOrNull(maLeads),
+      totalSpend: strOrNull(maSpend),
+      impressions: numOrNull(maImpressions),
+      clicks: numOrNull(maClicks),
+      reach: numOrNull(maReach),
+      messageConversations: numOrNull(maConversations),
+      gstAmount: strOrNull(maGst),
+    },
+  };
+}
+
 async function generateReport() {
   if (!activeClientId) {
     showAlert('Please select or add a client first.', 'error');
@@ -271,7 +322,12 @@ async function generateReport() {
     const res = await fetch('/api/generate-report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: activeClientId, currentMonth, comparisonMonth }),
+      body: JSON.stringify({
+        clientId: activeClientId,
+        currentMonth,
+        comparisonMonth,
+        paidMedia: collectPaidMedia(),
+      }),
     });
 
     if (!res.ok) {

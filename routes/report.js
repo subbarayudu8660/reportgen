@@ -18,7 +18,7 @@ function emptySeoData() {
 }
 
 router.post('/generate-report', async (req, res) => {
-  const { clientId, currentMonth, comparisonMonth } = req.body;
+  const { clientId, currentMonth, comparisonMonth, paidMedia } = req.body;
 
   if (!clientId) {
     return res.status(400).json({ error: 'Please select a client.' });
@@ -39,7 +39,7 @@ router.post('/generate-report', async (req, res) => {
       getFullReportData(currentMonth, comparisonMonth, client.ga4PropertyId, email),
       client.sheetId ? getSeoOverview(currentMonth, comparisonMonth, client.sheetId, email) : Promise.resolve(emptySeoData()),
     ]);
-    const data = { ...gaData, seo: seoData, clientName: client.name };
+    const data = { ...gaData, seo: seoData, clientName: client.name, paidMedia };
     const buffer = await generateReportPptx(data);
 
     const currentLabel = monthLabel(currentMonth);

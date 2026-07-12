@@ -492,6 +492,201 @@ function buildLandingPagesSlide(pptx, data) {
   return slide;
 }
 
+// Parses a free-text currency string like "CAD $154.77" into a prefix + numeric amount.
+function parseCurrencyString(str) {
+  if (!str) return null;
+  const match = String(str).trim().match(/^(.*?)([\d,]+(?:\.\d+)?)\s*$/);
+  if (!match) return null;
+  const amount = parseFloat(match[2].replace(/,/g, ''));
+  if (!Number.isFinite(amount)) return null;
+  return { prefix: match[1], amount };
+}
+
+// Combines spend + GST into a display string. Adds numerically when both share a
+// recognizable currency format; otherwise falls back to a plain concatenation.
+function withGstText(spend, gst) {
+  const parsedSpend = parseCurrencyString(spend);
+  const parsedGst = parseCurrencyString(gst);
+  if (parsedSpend && parsedGst) {
+    const total = parsedSpend.amount + parsedGst.amount;
+    return `${parsedSpend.prefix}${total.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+  return `${spend} + ${gst} (GST)`;
+}
+
+function hasAnyValue(obj) {
+  return Boolean(obj) && Object.values(obj).some((v) => v !== null && v !== undefined && v !== '');
+}
+
+function paidMediaCell(value) {
+  return value === null || value === undefined || value === '' ? '—' : String(value);
+}
+
+function addPaidMediaSectionHeader(slide, label, y) {
+  slide.addShape('rect', {
+    x: 0.5,
+    y,
+    w: 9,
+    h: 0.35,
+    fill: { color: ACCENT },
+    line: { type: 'none' },
+  });
+  slide.addText(label, {
+    x: 0.6,
+    y,
+    w: 8.8,
+    h: 0.35,
+    fontSize: 13,
+    bold: true,
+    color: WHITE,
+    fontFace: 'Arial',
+    valign: 'middle',
+  });
+}
+
+function buildGoogleAdsTable(slide, googleAds, y) {
+  const header = ['Total Campaigns', 'Conversions', 'Spend', 'Impressions', 'Clicks'];
+  const dataRow = [
+    'Total',
+    paidMediaCell(googleAds.totalCampaigns === null || googleAds.totalCampaigns === undefined ? null : fmtNum(googleAds.totalCampaigns)),
+    paidMediaCell(googleAds.conversions === null || googleAds.conversions === undefined ? null : fmtNum(googleAds.conversions)),
+    paidMediaCell(googleAds.totalSpend),
+    paidMediaCell(googleAds.impressions === null || googleAds.impressions === undefined ? null : fmtNum(googleAds.impressions)),
+    paidMediaCell(googleAds.clicks === null || googleAds.clicks === undefined ? null : fmtNum(googleAds.clicks)),
+  ];
+
+  const rows = [['', ...header], dataRow];
+  if (googleAds.gstAmount) {
+    rows.push(['With GST', '', '', withGstText(googleAds.totalSpend, googleAds.gstAmount), '', '']);
+  }
+
+  addTable(slide, rows, [1.4, 1.6, 1.4, 1.8, 1.4, 1.4], { x: 0.5, y, w: 9 });
+}
+
+function buildMetaAdsTable(slide, metaAds, y) {
+  const header = ['Total Campaigns', 'Form Leads', 'Spend', 'Impressions', 'Clicks', 'Reach', 'Message Conv.'];
+  const numOrDash = (n) => (n === null || n === undefined ? null : fmtNum(n));
+  const dataRow = [
+    'Total',
+    paidMediaCell(numOrDash(metaAds.totalCampaigns)),
+    paidMediaCell(numOrDash(metaAds.formLeads)),
+    paidMediaCell(metaAds.totalSpend),
+    paidMediaCell(numOrDash(metaAds.impressions)),
+    paidMediaCell(numOrDash(metaAds.clicks)),
+    paidMediaCell(numOrDash(metaAds.reach)),
+    paidMediaCell(numOrDash(metaAds.messageConversations)),
+  ];
+
+  const rows = [['', ...header], dataRow];
+  if (metaAds.gstAmount) {
+    rows.push(['With GST', '', '', withGstText(metaAds.totalSpend, metaAds.gstAmount), '', '', '', '']);
+  }
+
+  addTable(slide, rows, [1.05, 1.15, 1.05, 1.4, 1.15, 1.0, 1.05, 1.15], { x: 0.5, y, w: 9 });
+}
+
+function buildPaidMediaSlide(pptx, data) {
+  const googleAds = (data.paidMedia && data.paidMedia.googleAds) || {};
+  const metaAds = (data.paidMedia && data.paidMedia.metaAds) || {};
+  const hasGoogle = hasAnyValue(googleAds);
+  const hasMeta = hasAnyValue(metaAds);
+
+  if (!hasGoogle && !hasMeta) return null;
+
+  const slide = pptx.addSlide();
+  slide.background = { color: BG };
+
+  slide.addText('Paid Media Performance', {
+    x: 0.5,
+    y: 0.3,
+    w: 9,
+    h: 0.55,
+    fontSize: 28,
+    bold: true,
+    color: ACCENT,
+    fontFace: 'Arial',
+  });
+  slide.addText(`Google Ads & Meta Ads — ${monthLabel(data.currentMonth)}`, {
+    x: 0.5,
+    y: 0.85,
+    w: 9,
+    h: 0.3,
+    fontSize: 13,
+    color: NEUTRAL,
+    fontFace: 'Arial',
+  });
+  slide.addShape('line', {
+    x: 0.5,
+    y: 1.2,
+    w: 2.2,
+    h: 0,
+    line: { color: ACCENT, width: 2.5 },
+  });
+
+  let y = 1.45;
+
+  addPaidMediaSectionHeader(slide, 'Google Ads', y);
+  y += 0.45;
+  if (hasGoogle) {
+    buildGoogleAdsTable(slide, googleAds, y);
+    y += googleAds.gstAmount ? 1.15 : 0.85;
+  } else {
+    slide.addText('Not configured for this period', {
+      x: 0.5,
+      y,
+      w: 9,
+      h: 0.4,
+      fontSize: 12,
+      italic: true,
+      color: NEUTRAL,
+      fontFace: 'Arial',
+    });
+    y += 0.55;
+  }
+
+  y += 0.2;
+  addPaidMediaSectionHeader(slide, 'Meta Ads', y);
+  y += 0.45;
+  if (hasMeta) {
+    buildMetaAdsTable(slide, metaAds, y);
+  } else {
+    slide.addText('Not configured for this period', {
+      x: 0.5,
+      y,
+      w: 9,
+      h: 0.4,
+      fontSize: 12,
+      italic: true,
+      color: NEUTRAL,
+      fontFace: 'Arial',
+    });
+  }
+
+  slide.addText(`${data.clientName || BRAND} | Digital Marketing Report | ${monthLabel(data.currentMonth)}`, {
+    x: 0.5,
+    y: 5.35,
+    w: 6.0,
+    h: 0.25,
+    fontSize: 9,
+    color: NEUTRAL,
+    fontFace: 'Arial',
+  });
+  slide.slideNumber = {
+    x: 9.3,
+    y: 5.35,
+    w: 0.4,
+    h: 0.25,
+    fontSize: 9,
+    color: NEUTRAL,
+    fontFace: 'Arial',
+  };
+
+  return slide;
+}
+
 async function generateReportPptx(data) {
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: 'WIDE', width: 10, height: 5.63 });
@@ -502,6 +697,7 @@ async function generateReportPptx(data) {
   buildOrganicSearchSlide(pptx, data);
   buildEcommerceSlide(pptx, data);
   buildLandingPagesSlide(pptx, data);
+  buildPaidMediaSlide(pptx, data);
 
   return pptx.write({ outputType: 'nodebuffer' });
 }

@@ -87,6 +87,76 @@
         </div>
       </div>
 
+      <details id="paid-media-section" class="paid-media-section">
+        <summary>Paid Media Data <span class="optional-tag">Optional — fill in if the client runs paid ads</span></summary>
+
+        <div class="paid-media-columns">
+          <div class="paid-media-column">
+            <p class="period-label">Google Ads</p>
+            <div class="field">
+              <label for="ga-campaigns">Total Campaigns</label>
+              <input id="ga-campaigns" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ga-spend">Total Spend</label>
+              <input id="ga-spend" type="text" placeholder="CAD $154.77" />
+            </div>
+            <div class="field">
+              <label for="ga-impressions">Impressions</label>
+              <input id="ga-impressions" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ga-clicks">Clicks</label>
+              <input id="ga-clicks" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ga-conversions">Conversions <span class="optional-tag">Optional</span></label>
+              <input id="ga-conversions" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ga-gst">GST/Tax Amount <span class="optional-tag">Optional</span></label>
+              <input id="ga-gst" type="text" placeholder="CAD $24.28" />
+            </div>
+          </div>
+
+          <div class="paid-media-column">
+            <p class="period-label">Meta Ads</p>
+            <div class="field">
+              <label for="ma-campaigns">Total Campaigns</label>
+              <input id="ma-campaigns" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ma-leads">Form Leads</label>
+              <input id="ma-leads" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ma-spend">Total Spend</label>
+              <input id="ma-spend" type="text" placeholder="CAD $154.77" />
+            </div>
+            <div class="field">
+              <label for="ma-impressions">Impressions</label>
+              <input id="ma-impressions" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ma-clicks">Clicks</label>
+              <input id="ma-clicks" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ma-reach">Reach</label>
+              <input id="ma-reach" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ma-conversations">Message Conversations</label>
+              <input id="ma-conversations" type="number" min="0" />
+            </div>
+            <div class="field">
+              <label for="ma-gst">GST/Tax Amount <span class="optional-tag">Optional</span></label>
+              <input id="ma-gst" type="text" placeholder="CAD $24.28" />
+            </div>
+          </div>
+        </div>
+      </details>
+
       <div class="form-actions">
         <button id="generate-btn" class="btn btn-primary" disabled>Generate Report</button>
       </div>
