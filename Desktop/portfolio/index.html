@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Subbarayudu — CS & Statistics, UMass Amherst</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300;1,9..144,400&family=Lora:ital,wght@0,400;0,500;1,400&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" />
+
+  <style>
+    /* ── CSS Variables ── */
+    :root {
+      --cream:   #F6EDD8;
+      --cream2:  #EDE2C4;
+      --cream3:  #E1D2AE;
+      --terra:   #BE5A32;
+      --terra2:  #D06F49;
+      --mustard: #BA8414;
+      --brown:   #1E0E04;
+      --brown2:  #5C3520;
+      --brown3:  #9B7055;
+
+      --pad-v: 6rem;
+      --pad-h: 5rem;
+    }
+
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--cream);
+      color: var(--brown);
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1.05rem;
+      line-height: 1.7;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* ── Paper Grain Overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 999;
+      opacity: 0.22;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23grain)' opacity='1'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 300px 300px;
+    }
+
+    /* ── Typography helpers ── */
+    .font-mono  { font-family: 'Courier Prime', monospace; }
+    .font-serif { font-family: 'Fraunces', Georgia, serif; }
+
+    .label {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--mustard);
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* ── Section dividers ── */
+    section + section {
+      border-top: 1px solid var(--cream3);
+    }
+
+    /* ── Scroll-reveal ── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ─────────────────────────────────────────
+       NAV
+    ───────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.4rem var(--pad-h);
+      background: linear-gradient(to bottom, var(--cream) 30%, transparent);
+    }
+
+    .nav-logo {
+      font-family: 'Fraunces', serif;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--brown);
+    }
+    .nav-logo .dot { color: var(--terra); }
+
+    .nav-links {
+      display: flex;
+      gap: 2.2rem;
+      list-style: none;
+    }
+    .nav-links a {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.85rem;
+      color: var(--brown2);
+      text-transform: lowercase;
+      letter-spacing: 0.05em;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--terra); }
+
+    /* ─────────────────────────────────────────
+       HERO
+    ───────────────────────────────────────── */
+    #hero {
+      min-height: 100svh;
+      padding: calc(var(--pad-v) + 4rem) var(--pad-h) var(--pad-v);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+    }
+
+    .hero-label {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .hero-label::before {
+      content: '';
+      display: block;
+      width: 2rem;
+      height: 1px;
+      background: var(--terra);
+    }
+
+    .hero-heading {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(4rem, 8vw, 9rem);
+      font-weight: 400;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      color: var(--brown);
+      margin-bottom: 1.8rem;
+    }
+    .hero-heading em {
+      font-style: italic;
+      font-weight: 300;
+      color: var(--terra);
+    }
+
+    .hero-body {
+      max-width: 44ch;
+      color: var(--brown2);
+      font-size: 1.1rem;
+      line-height: 1.75;
+      margin-bottom: 2.6rem;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 1.2rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.88rem;
+      letter-spacing: 0.04em;
+      padding: 0.75rem 1.6rem;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+      display: inline-block;
+    }
+    .btn-filled {
+      background: var(--terra);
+      color: var(--cream);
+      border: 1.5px solid var(--terra);
+    }
+    .btn-filled:hover {
+      background: var(--terra2);
+      border-color: var(--terra2);
+    }
+    .btn-outline {
+      background: transparent;
+      color: var(--brown);
+      border: 1.5px solid var(--brown2);
+    }
+    .btn-outline:hover {
+      border-color: var(--terra);
+      color: var(--terra);
+    }
+
+    .hero-scroll-hint {
+      position: absolute;
+      right: var(--pad-h);
+      bottom: var(--pad-v);
+      writing-mode: vertical-rl;
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      color: var(--brown3);
+      text-transform: lowercase;
+      user-select: none;
+    }
+
+    /* Stagger hero children */
+    .hero-label  { transition-delay: 0.05s; }
+    .hero-heading{ transition-delay: 0.15s; }
+    .hero-body   { transition-delay: 0.28s; }
+    .hero-cta    { transition-delay: 0.42s; }
+    .hero-scroll-hint { transition-delay: 0.6s; }
+
+    /* ─────────────────────────────────────────
+       MARQUEE STRIP
+    ───────────────────────────────────────── */
+    #stack {
+      background: var(--cream2);
+      border-top: 1px solid var(--cream3);
+      border-bottom: 1px solid var(--cream3);
+      padding: 1.1rem 0;
+      overflow: hidden;
+    }
+
+    .marquee-track {
+      display: flex;
+      width: max-content;
+      animation: scroll-marquee 28s linear infinite;
+    }
+    .marquee-track:hover { animation-play-state: paused; }
+
+    @keyframes scroll-marquee {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    .marquee-items {
+      display: flex;
+      gap: 0;
+      white-space: nowrap;
+    }
+
+    .marquee-item {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.82rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--brown2);
+      padding: 0 2.4rem;
+    }
+    .marquee-item::after {
+      content: '·';
+      margin-left: 2.4rem;
+      color: var(--terra);
+    }
+
+    /* ─────────────────────────────────────────
+       WORK / PROJECTS
+    ───────────────────────────────────────── */
+    #work {
+      padding: var(--pad-v) var(--pad-h);
+    }
+
+    .section-header {
+      margin-bottom: 3.5rem;
+    }
+    .section-header .label { margin-bottom: 0.6rem; display: block; }
+    .section-title {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(2.2rem, 4vw, 3.2rem);
+      font-weight: 400;
+      line-height: 1.15;
+    }
+
+    .projects-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.8rem;
+    }
+
+    .card {
+      background: var(--cream2);
+      border-left: 2px solid var(--terra);
+      padding: 2.2rem 1.8rem 2rem;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.25s;
+    }
+    .card:hover { border-color: var(--terra2); }
+
+    .card.is-latest {
+      border-left-width: 3px;
+      background: var(--cream2);
+    }
+
+    .card-badge {
+      display: inline-block;
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--cream);
+      background: var(--mustard);
+      border-radius: 2px;
+      padding: 0.2rem 0.55rem;
+      margin-bottom: 0.9rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .projects-divider {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 3rem 0 1.8rem;
+    }
+    .projects-divider::before,
+    .projects-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--cream3);
+    }
+
+    .card-num {
+      position: absolute;
+      top: -0.6rem;
+      right: 1rem;
+      font-family: 'Fraunces', serif;
+      font-size: 6rem;
+      font-weight: 600;
+      color: var(--cream3);
+      line-height: 1;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .card-name {
+      font-family: 'Fraunces', serif;
+      font-size: 1.5rem;
+      font-weight: 400;
+      margin-bottom: 0.8rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    .tag {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--brown2);
+      background: var(--cream);
+      border: 1px solid var(--cream3);
+      border-radius: 2px;
+      padding: 0.18rem 0.55rem;
+    }
+
+    .card-desc {
+      font-size: 0.95rem;
+      color: var(--brown2);
+      line-height: 1.65;
+      margin-bottom: 1.4rem;
+    }
+
+    .card-link {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.06em;
+      color: var(--terra);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      transition: color 0.2s;
+    }
+    .card-link:hover { color: var(--terra2); }
+
+    /* Card stagger */
+    .card:nth-child(1) { transition-delay: 0.05s; }
+    .card:nth-child(2) { transition-delay: 0.12s; }
+    .card:nth-child(3) { transition-delay: 0.19s; }
+    .card:nth-child(4) { transition-delay: 0.26s; }
+
+    /* ─────────────────────────────────────────
+       ABOUT
+    ───────────────────────────────────────── */
+    #about {
+      padding: var(--pad-v) var(--pad-h);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+    }
+
+    .about-pull {
+      font-family: 'Fraunces', serif;
+      font-style: italic;
+      font-weight: 300;
+      font-size: clamp(1.3rem, 2.2vw, 1.75rem);
+      line-height: 1.5;
+      color: var(--brown);
+      border-left: 2px solid var(--terra);
+      padding-left: 1.4rem;
+      margin-bottom: 2rem;
+    }
+
+    .about-body {
+      color: var(--brown2);
+      font-size: 1rem;
+      margin-bottom: 2.4rem;
+    }
+
+    .stats {
+      display: flex;
+      gap: 2.4rem;
+      flex-wrap: wrap;
+    }
+    .stat-block {}
+    .stat-num {
+      font-family: 'Courier Prime', monospace;
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--terra);
+      display: block;
+    }
+    .stat-label {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--brown3);
+    }
+
+    /* CSS/SVG decorative stamp */
+    .about-deco {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stamp {
+      position: relative;
+      width: 260px;
+      height: 260px;
+    }
+    .stamp svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ─────────────────────────────────────────
+       CONTACT
+    ───────────────────────────────────────── */
+    #contact {
+      padding: var(--pad-v) var(--pad-h);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .contact-heading {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(2.4rem, 5vw, 4rem);
+      font-weight: 400;
+      margin-bottom: 1rem;
+    }
+
+    .contact-sub {
+      color: var(--brown2);
+      max-width: 42ch;
+      margin-bottom: 2.8rem;
+      font-size: 1.05rem;
+    }
+
+    .contact-email {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(1.3rem, 2.5vw, 1.9rem);
+      color: var(--terra);
+      font-style: italic;
+      position: relative;
+      display: inline-block;
+    }
+    .contact-email::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      bottom: -2px;
+      width: 0;
+      height: 1.5px;
+      background: var(--terra2);
+      transition: width 0.35s ease;
+    }
+    .contact-email:hover::after { width: 100%; }
+
+    .social-row {
+      display: flex;
+      gap: 2.2rem;
+      margin-top: 3.2rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .social-link {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      color: var(--brown2);
+      text-transform: lowercase;
+      transition: color 0.2s;
+    }
+    .social-link:hover { color: var(--terra); }
+
+    /* ─────────────────────────────────────────
+       FOOTER
+    ───────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--cream3);
+      padding: 1.8rem var(--pad-h);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    footer p {
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      color: var(--brown3);
+    }
+
+    /* ─────────────────────────────────────────
+       RESPONSIVE
+    ───────────────────────────────────────── */
+    @media (max-width: 1100px) {
+      .projects-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 700px) {
+      .projects-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      :root {
+        --pad-v: 4rem;
+        --pad-h: 1.6rem;
+      }
+
+      nav {
+        padding: 1.1rem var(--pad-h);
+      }
+      .nav-links { gap: 1.4rem; }
+
+      .hero-scroll-hint { display: none; }
+
+      #about {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+      }
+      .about-deco { order: -1; }
+      .stamp { width: 180px; height: 180px; }
+
+      .stats { gap: 1.6rem; }
+    }
+
+    @media (max-width: 480px) {
+      .nav-links { gap: 1rem; }
+      .hero-cta { flex-direction: column; }
+      .btn { text-align: center; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── NAV ── -->
+  <nav>
+    <a href="#hero" class="nav-logo">Subbu<span class="dot">·</span></a>
+    <ul class="nav-links">
+      <li><a href="#work">work</a></li>
+      <li><a href="#about">about</a></li>
+      <li><a href="#contact">contact</a></li>
+    </ul>
+  </nav>
+
+  <!-- ── HERO ── -->
+  <section id="hero">
+    <div class="hero-label label reveal">
+      CS & Statistics · UMass Amherst
+    </div>
+
+    <h1 class="hero-heading reveal">
+      Building smart<br>
+      things that <em>work.</em>
+    </h1>
+
+    <p class="hero-body reveal">
+      I build AI systems and full-stack apps — from autonomous agents
+      to chatbots to web platforms. Currently interning at WebrocketAI.
+    </p>
+
+    <div class="hero-cta reveal">
+      <a href="#work" class="btn btn-filled">view my work ↓</a>
+      <a href="#contact" class="btn btn-outline">get in touch</a>
+    </div>
+
+    <span class="hero-scroll-hint reveal">scroll to explore</span>
+  </section>
+
+  <!-- ── STACK MARQUEE ── -->
+  <section id="stack" aria-label="Technology stack">
+    <div class="marquee-track" aria-hidden="true">
+      <!-- Two identical sets for seamless loop -->
+      <div class="marquee-items">
+        <span class="marquee-item">Python</span>
+        <span class="marquee-item">JavaScript</span>
+        <span class="marquee-item">React</span>
+        <span class="marquee-item">Node.js</span>
+        <span class="marquee-item">LangGraph</span>
+        <span class="marquee-item">FastAPI</span>
+        <span class="marquee-item">Jupyter</span>
+        <span class="marquee-item">SQL</span>
+        <span class="marquee-item">Machine Learning</span>
+        <span class="marquee-item">LLMs</span>
+        <span class="marquee-item">Git</span>
+      </div>
+      <div class="marquee-items" aria-hidden="true">
+        <span class="marquee-item">Python</span>
+        <span class="marquee-item">JavaScript</span>
+        <span class="marquee-item">React</span>
+        <span class="marquee-item">Node.js</span>
+        <span class="marquee-item">LangGraph</span>
+        <span class="marquee-item">FastAPI</span>
+        <span class="marquee-item">Jupyter</span>
+        <span class="marquee-item">SQL</span>
+        <span class="marquee-item">Machine Learning</span>
+        <span class="marquee-item">LLMs</span>
+        <span class="marquee-item">Git</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── WORK ── -->
+  <section id="work">
+    <header class="section-header reveal">
+      <span class="label">Selected work</span>
+      <h2 class="section-title">Things I've<br>built with care.</h2>
+    </header>
+
+    <div class="projects-grid">
+
+      <article class="card is-latest reveal">
+        <span class="card-num" aria-hidden="true">01</span>
+        <span class="card-badge">latest</span>
+        <h3 class="card-name">AutoCV</h3>
+        <div class="card-tags">
+          <span class="tag">Chrome Extension</span>
+          <span class="tag">Claude API</span>
+          <span class="tag">JavaScript</span>
+        </div>
+        <p class="card-desc">
+          A Chrome extension that generates tailored cover letters from Handshake job postings using
+          the Claude API, exporting them as PDFs ready to upload.
+        </p>
+        <a href="https://github.com/subbarayudu8660/auto_CV" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card is-latest reveal">
+        <span class="card-num" aria-hidden="true">02</span>
+        <span class="card-badge">latest</span>
+        <h3 class="card-name">ReportGen</h3>
+        <div class="card-tags">
+          <span class="tag">Node.js</span>
+          <span class="tag">GA4 API</span>
+          <span class="tag">PPTX</span>
+        </div>
+        <p class="card-desc">
+          Pulls Google Analytics 4 data for a selected month and generates a downloadable PowerPoint
+          report — traffic overview, organic search, ecommerce funnel, and top landing pages.
+        </p>
+        <a href="https://github.com/subbarayudu8660/reportgen" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card is-latest reveal">
+        <span class="card-num" aria-hidden="true">03</span>
+        <span class="card-badge">latest</span>
+        <h3 class="card-name">Data Analyst Agent</h3>
+        <div class="card-tags">
+          <span class="tag">Python</span>
+          <span class="tag">LangGraph</span>
+          <span class="tag">LLM</span>
+        </div>
+        <p class="card-desc">
+          A tool-using, memory-persistent LangGraph agent that answers natural-language questions about
+          a dataset by writing and executing real Python code, searching the web, and generating charts.
+        </p>
+        <a href="https://github.com/subbarayudu8660/data-analyst-agent" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card reveal">
+        <span class="card-num" aria-hidden="true">04</span>
+        <h3 class="card-name">VerifAI</h3>
+        <div class="card-tags">
+          <span class="tag">Python</span>
+          <span class="tag">LangGraph</span>
+          <span class="tag">Multi-Agent</span>
+        </div>
+        <p class="card-desc">
+          A 5-agent LangGraph pipeline that verifies technical candidates — scraping GitHub, detecting
+          AI-generated code, cross-referencing résumé claims, and producing a report.
+        </p>
+        <a href="https://github.com/subbarayudu8660/VerifAI" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card reveal">
+        <span class="card-num" aria-hidden="true">05</span>
+        <h3 class="card-name">Feed Signal</h3>
+        <div class="card-tags">
+          <span class="tag">Node.js</span>
+          <span class="tag">Apify</span>
+          <span class="tag">Instagram API</span>
+        </div>
+        <p class="card-desc">
+          A local, one-shot tool that analyzes an Instagram account's recent posts for content strategy —
+          format mix, hashtags, posting cadence, top performers, and audio strategy.
+        </p>
+        <a href="https://github.com/subbarayudu8660/feedsignal" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card reveal">
+        <span class="card-num" aria-hidden="true">06</span>
+        <h3 class="card-name">Codebase RAG</h3>
+        <div class="card-tags">
+          <span class="tag">Python</span>
+          <span class="tag">RAG</span>
+          <span class="tag">Embeddings</span>
+        </div>
+        <p class="card-desc">
+          A retrieval-augmented generation system that lets you query and understand a codebase through
+          natural language, with an evaluation harness to track answer quality.
+        </p>
+        <a href="https://github.com/subbarayudu8660/codebase-rag" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card reveal">
+        <span class="card-num" aria-hidden="true">07</span>
+        <h3 class="card-name">PR Agent</h3>
+        <div class="card-tags">
+          <span class="tag">Python</span>
+          <span class="tag">Multi-Agent</span>
+          <span class="tag">Llama 3.2</span>
+        </div>
+        <p class="card-desc">
+          A production-grade multi-agent system that automatically reviews GitHub pull requests —
+          security, performance, and style checks in parallel — and posts feedback to the PR thread.
+        </p>
+        <a href="https://github.com/subbarayudu8660/PR-AGENT" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+    </div>
+
+    <div class="projects-divider reveal">
+      <span class="label">earlier work</span>
+    </div>
+
+    <div class="projects-grid">
+
+      <article class="card reveal">
+        <span class="card-num" aria-hidden="true">08</span>
+        <h3 class="card-name">Notes Chatbot</h3>
+        <div class="card-tags">
+          <span class="tag">Python</span>
+          <span class="tag">LLM</span>
+          <span class="tag">FastAPI</span>
+        </div>
+        <p class="card-desc">
+          A conversational AI chatbot that answers questions from your personal notes.
+        </p>
+        <a href="https://github.com/subbarayudu8660/notes-chatbot" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card reveal">
+        <span class="card-num" aria-hidden="true">09</span>
+        <h3 class="card-name">Expense Tracker</h3>
+        <div class="card-tags">
+          <span class="tag">JavaScript</span>
+          <span class="tag">React</span>
+          <span class="tag">Node.js</span>
+          <span class="tag">CSS</span>
+        </div>
+        <p class="card-desc">
+          Full-stack expense tracking app with a React frontend and Node.js backend.
+        </p>
+        <a href="https://github.com/subbarayudu8660/expense-tracker" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card reveal">
+        <span class="card-num" aria-hidden="true">10</span>
+        <h3 class="card-name">Movie Recommendation System</h3>
+        <div class="card-tags">
+          <span class="tag">Python</span>
+          <span class="tag">Jupyter</span>
+          <span class="tag">ML</span>
+          <span class="tag">Pandas</span>
+        </div>
+        <p class="card-desc">
+          Content-based movie recommender built with collaborative filtering and similarity scoring.
+        </p>
+        <a href="https://github.com/subbarayudu8660/movie-reccomendation-system" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+      <article class="card reveal">
+        <span class="card-num" aria-hidden="true">11</span>
+        <h3 class="card-name">Heart Disease Classifier</h3>
+        <div class="card-tags">
+          <span class="tag">Python</span>
+          <span class="tag">Scikit-learn</span>
+          <span class="tag">Jupyter</span>
+        </div>
+        <p class="card-desc">
+          Binary classifier predicting heart disease risk using clinical features and ensemble methods.
+        </p>
+        <a href="https://github.com/subbarayudu8660/heart_disease_classifier" class="card-link" target="_blank" rel="noopener">view on GitHub →</a>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ── ABOUT ── -->
+  <section id="about">
+    <div class="about-text reveal">
+      <span class="label" style="display:block;margin-bottom:0.6rem;">About me</span>
+      <blockquote class="about-pull">
+        "I like giving things the ability to reason, plan, and act on their own."
+      </blockquote>
+      <p class="about-body">
+        I'm a CS & Statistics student at UMass Amherst who likes building things end to end —
+        wiring up agents that can use tools and make decisions one day, building the web app
+        around them the next. Currently interning at WebrocketAI, digging deeper into agentic
+        systems and how to make them reliable.
+      </p>
+      <div class="stats">
+        <div class="stat-block">
+          <span class="stat-num">19 repos</span>
+          <span class="stat-label">on GitHub</span>
+        </div>
+        <div class="stat-block">
+          <span class="stat-num">Agents + Web</span>
+          <span class="stat-label">focus areas</span>
+        </div>
+        <div class="stat-block">
+          <span class="stat-num">UMass '28</span>
+          <span class="stat-label">class year</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Purely CSS/SVG decorative stamp -->
+    <div class="about-deco reveal">
+      <div class="stamp" aria-hidden="true">
+        <svg viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Concentric hand-drawn-style circles -->
+          <circle cx="130" cy="130" r="118" stroke="#BE5A32" stroke-width="1.5" stroke-dasharray="6 4" />
+          <circle cx="130" cy="130" r="104" stroke="#BE5A32" stroke-width="1"   stroke-dasharray="3 6" />
+          <circle cx="130" cy="130" r="88"  stroke="#BA8414" stroke-width="2"   />
+          <circle cx="130" cy="130" r="70"  stroke="#BA8414" stroke-width="1"   stroke-dasharray="4 3"/>
+          <circle cx="130" cy="130" r="52"  stroke="#BE5A32" stroke-width="2.5" />
+          <circle cx="130" cy="130" r="34"  stroke="#BE5A32" stroke-width="1.5" stroke-dasharray="5 3"/>
+          <!-- Inner mark -->
+          <circle cx="130" cy="130" r="14"  fill="#BE5A32" opacity="0.18" />
+          <circle cx="130" cy="130" r="7"   fill="#BE5A32" opacity="0.55" />
+          <!-- Cross marks at cardinal points on the 88-circle -->
+          <line x1="130" y1="36" x2="130" y2="46"  stroke="#BA8414" stroke-width="1.5"/>
+          <line x1="130" y1="214" x2="130" y2="224" stroke="#BA8414" stroke-width="1.5"/>
+          <line x1="36"  y1="130" x2="46"  y2="130" stroke="#BA8414" stroke-width="1.5"/>
+          <line x1="214" y1="130" x2="224" y2="130" stroke="#BA8414" stroke-width="1.5"/>
+          <!-- Corner diagonals -->
+          <line x1="68" y1="68"   x2="77"  y2="77"  stroke="#BE5A32" stroke-width="1" opacity="0.6"/>
+          <line x1="192" y1="68"  x2="183" y2="77"  stroke="#BE5A32" stroke-width="1" opacity="0.6"/>
+          <line x1="68" y1="192"  x2="77"  y2="183" stroke="#BE5A32" stroke-width="1" opacity="0.6"/>
+          <line x1="192" y1="192" x2="183" y2="183" stroke="#BE5A32" stroke-width="1" opacity="0.6"/>
+          <!-- Label arc text approximation -->
+          <text
+            font-family="'Courier Prime', monospace"
+            font-size="8"
+            fill="#9B7055"
+            letter-spacing="4"
+            text-anchor="middle"
+            transform="translate(130,130) rotate(-90)"
+          >
+            <textPath href="#stamp-arc" startOffset="50%">
+              SUBBARAYUDU · CS & STATISTICS · MMXXVIII ·
+            </textPath>
+          </text>
+          <defs>
+            <path id="stamp-arc" d="M0,-96 A96,96 0 1,1 -0.01,-96" />
+          </defs>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CONTACT ── -->
+  <section id="contact">
+    <h2 class="contact-heading reveal">Let's build something.</h2>
+    <p class="contact-sub reveal">
+      Whether it's an ML project, a full-stack idea, or just a good conversation —
+      I'm always glad to hear what you're working on.
+    </p>
+    <a href="mailto:subbarayudu8660@gmail.com" class="contact-email reveal">
+      subbarayudu8660@gmail.com
+    </a>
+    <nav class="social-row reveal" aria-label="Social links">
+      <a href="https://github.com/subbarayudu8660" class="social-link" target="_blank" rel="noopener">GitHub</a>
+      <a href="#" class="social-link">LinkedIn</a>
+    </nav>
+  </section>
+
+  <!-- ── FOOTER ── -->
+  <footer>
+    <p>© 2025 Subbarayudu — handcrafted with care</p>
+  </footer>
+
+  <!-- ── JS: IntersectionObserver + marquee hover (under 30 lines) ── -->
+  <script>
+    // Scroll-reveal
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver(
+      entries => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      { threshold: 0.12 }
+    );
+    reveals.forEach(el => observer.observe(el));
+
+    // Hero elements visible immediately on load
+    document.querySelectorAll('#hero .reveal').forEach(el => {
+      setTimeout(() => el.classList.add('visible'), 80);
+    });
+
+    // Marquee pause on hover (CSS handles it, this is backup for touch)
+    const track = document.querySelector('.marquee-track');
+    track.addEventListener('mouseenter', () => track.style.animationPlayState = 'paused');
+    track.addEventListener('mouseleave', () => track.style.animationPlayState = 'running');
+  </script>
+
+</body>
+</html>
