@@ -9,6 +9,7 @@ const addClientForm = document.getElementById('add-client-form');
 const newClientName = document.getElementById('new-client-name');
 const newClientGa4 = document.getElementById('new-client-ga4');
 const newClientSheet = document.getElementById('new-client-sheet');
+const newClientMeta = document.getElementById('new-client-meta');
 const cancelClientBtn = document.getElementById('cancel-client-btn');
 
 const stepSignin = document.getElementById('step-signin');
@@ -120,6 +121,7 @@ function toggleAddClientForm(show) {
     newClientName.value = '';
     newClientGa4.value = '';
     newClientSheet.value = '';
+    newClientMeta.value = '';
     newClientName.focus();
   }
 }
@@ -129,6 +131,7 @@ async function saveClient(e) {
   const name = newClientName.value.trim();
   const ga4PropertyId = newClientGa4.value.trim();
   const sheetId = newClientSheet.value.trim();
+  const metaAdAccountId = newClientMeta.value.trim();
 
   if (!name || !ga4PropertyId) {
     showAlert('Client name and GA4 Property ID are required.', 'error');
@@ -139,7 +142,7 @@ async function saveClient(e) {
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, ga4PropertyId, sheetId }),
+      body: JSON.stringify({ name, ga4PropertyId, sheetId, metaAdAccountId }),
     });
     const data = await res.json();
     if (!res.ok) {

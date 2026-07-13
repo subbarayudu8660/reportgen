@@ -1,6 +1,7 @@
 const express = require('express');
 const { getFullReportData, mapGa4Error } = require('../services/ga4');
 const { getSeoOverview } = require('../services/sheets');
+const { getMetaAdsData } = require('../services/meta');
 const { generateReportPptx, monthLabel } = require('../services/pptx');
 const { getClientById } = require('../services/clients');
 
@@ -39,7 +40,29 @@ router.post('/generate-report', async (req, res) => {
       getFullReportData(currentMonth, comparisonMonth, client.ga4PropertyId, email),
       client.sheetId ? getSeoOverview(currentMonth, comparisonMonth, client.sheetId, email) : Promise.resolve(emptySeoData()),
     ]);
-    const data = { ...gaData, seo: seoData, clientName: client.name, paidMedia };
+
+    // Meta Ads is fetched separately and never fails the whole report — a bad
+    // token or missing ad account just skips the slide and surfaces a warning.
+    let metaAdsData = null;
+    let metaAdsWarning = null;
+    if (client.metaAdAccountId) {
+      try {
+        metaAdsData = await getMetaAdsData(client.metaAdAccountId, currentMonth);
+      } catch (metaErr) {
+        console.error('Meta Ads API error:', metaErr.code, metaErr.message);
+        metaAdsWarning = `Meta Ads data could not be fetched: ${metaErr.message}`;
+      }
+    }
+
+    // When a Meta Ad Account ID is configured, API data replaces the manual Meta
+    // Ads form fields on the Paid Media slide; manual entry is only a fallback
+    // for clients with no ad account configured.
+    const effectivePaidMedia = {
+      googleAds: paidMedia && paidMedia.googleAds,
+      metaAds: client.metaAdAccountId ? metaAdsData : paidMedia && paidMedia.metaAds,
+    };
+
+    const data = { ...gaData, seo: seoData, clientName: client.name, paidMedia: effectivePaidMedia };
     const buffer = await generateReportPptx(data);
 
     const currentLabel = monthLabel(currentMonth);
@@ -61,6 +84,9 @@ router.post('/generate-report', async (req, res) => {
     }
     if (gaData.hasAnyGa4Data && !gaData.comparisonMonthHasGa4Data) {
       warnings.push(`No comparison period data available — ${comparisonLabel} has no recorded GA4 sessions.`);
+    }
+    if (metaAdsWarning) {
+      warnings.push(metaAdsWarning);
     }
 
     const filename = `WebrocketAI-Report-${currentLabel.replace(' ', '-')}-vs-${comparisonLabel.replace(' ', '-')}.pptx`;

@@ -8,11 +8,16 @@ router.get('/clients', (req, res) => {
 });
 
 router.post('/clients', (req, res) => {
-  const { name, ga4PropertyId, sheetId } = req.body || {};
+  const { name, ga4PropertyId, sheetId, metaAdAccountId } = req.body || {};
   if (!name || !name.trim() || !ga4PropertyId || !ga4PropertyId.trim()) {
     return res.status(400).json({ error: 'Client name and GA4 Property ID are required.' });
   }
-  const client = addClient({ name: name.trim(), ga4PropertyId: ga4PropertyId.trim(), sheetId: (sheetId || '').trim() });
+  const client = addClient({
+    name: name.trim(),
+    ga4PropertyId: ga4PropertyId.trim(),
+    sheetId: (sheetId || '').trim(),
+    metaAdAccountId: (metaAdAccountId || '').trim(),
+  });
   res.status(201).json(client);
 });
 

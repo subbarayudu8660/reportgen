@@ -18,6 +18,14 @@ function saveClients(clients) {
   fs.writeFileSync(CLIENTS_PATH, JSON.stringify(clients, null, 2));
 }
 
+// Meta ad account IDs must be prefixed "act_" for the Graph API; normalize so
+// users can enter either the bare numeric ID or the act_-prefixed form.
+function normalizeMetaAdAccountId(id) {
+  const trimmed = (id || '').trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('act_') ? trimmed : `act_${trimmed}`;
+}
+
 // Seeds clients.json from the .env GA4/Sheet defaults exactly once, the first
 // time the app is used with no clients configured yet. Once any client exists
 // (even after all are later deleted down to zero... no: only when the file is
@@ -26,7 +34,7 @@ function ensureSeeded() {
   const clients = loadClients();
   if (clients.length > 0 || fs.existsSync(CLIENTS_PATH)) return clients;
 
-  const { GA4_PROPERTY_ID, GOOGLE_SHEET_ID } = process.env;
+  const { GA4_PROPERTY_ID, GOOGLE_SHEET_ID, META_AD_ACCOUNT_ID } = process.env;
   if (!GA4_PROPERTY_ID) return clients;
 
   const seeded = [
@@ -35,6 +43,7 @@ function ensureSeeded() {
       name: 'Default Client',
       ga4PropertyId: GA4_PROPERTY_ID,
       sheetId: GOOGLE_SHEET_ID || '',
+      metaAdAccountId: normalizeMetaAdAccountId(META_AD_ACCOUNT_ID),
       createdAt: new Date().toISOString(),
     },
   ];
@@ -50,13 +59,14 @@ function getClientById(id) {
   return getClients().find((c) => c.id === id) || null;
 }
 
-function addClient({ name, ga4PropertyId, sheetId }) {
+function addClient({ name, ga4PropertyId, sheetId, metaAdAccountId }) {
   const clients = loadClients();
   const client = {
     id: crypto.randomUUID(),
     name,
     ga4PropertyId,
     sheetId: sheetId || '',
+    metaAdAccountId: normalizeMetaAdAccountId(metaAdAccountId),
     createdAt: new Date().toISOString(),
   };
   clients.push(client);
