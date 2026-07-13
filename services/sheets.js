@@ -2,8 +2,12 @@ const { getAuthorizedClient, hasSheetsScope } = require('./googleAuth');
 
 const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
-const KEYWORD_SHEET_RANGE = "'Keyword Ranking Report'!A10:ZZ2000";
-const KPI_SHEET_RANGE = "'KPI_2'!A1:ZZ500";
+// Tab names vary slightly across clients' sheets (typos, pluralization, punctuation).
+// Each list is tried in order; the first one that matches an actual tab wins.
+// The off-page/KPI tab is the same underlying data across clients — "KPI's",
+// "KPI_2" etc. are all names seen for it, not separate tabs.
+const KEYWORD_TAB_CANDIDATES = ['Keyword Ranking Report', 'Keywords Ranking Report', 'Keyword Rankings', 'Keywords'];
+const KPI_TAB_CANDIDATES = ['KPI_2', 'KPI 2', 'KPI2', "KPI's", 'KPIs', 'KPI'];
 
 function ensureSheetsScope(email) {
   if (!hasSheetsScope(email)) {
@@ -13,6 +17,12 @@ function ensureSheetsScope(email) {
     err.code = 'SHEETS_SCOPE_MISSING';
     throw err;
   }
+}
+
+// Sheet name literals in an A1 range need internal single quotes doubled,
+// e.g. a tab named KPI's becomes 'KPI''s'!A1:ZZ500.
+function quoteSheetName(name) {
+  return `'${name.replace(/'/g, "''")}'`;
 }
 
 async function getSheetValues(range, sheetId, email) {
@@ -37,6 +47,47 @@ async function getSheetValues(range, sheetId, email) {
 
   const data = await res.json();
   return data.values || [];
+}
+
+// Fetches just the tab titles of the spreadsheet, used to resolve which
+// naming variant a client's sheet actually uses.
+async function getSheetTabTitles(sheetId, email) {
+  if (!sheetId) {
+    throw new Error('No Google Sheet ID configured for the active client.');
+  }
+  const client = await getAuthorizedClient(email);
+  const accessToken = await client.getAccessToken();
+
+  const url = `${SHEETS_API_BASE}/${sheetId}?fields=sheets.properties.title`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken.token}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(`Sheets API request failed (${res.status}): ${text}`);
+    err.code = 'SHEETS_API_ERROR';
+    err.status = res.status;
+    throw err;
+  }
+
+  const data = await res.json();
+  return (data.sheets || []).map((s) => s.properties.title);
+}
+
+// Matches candidates against actual tab titles case-insensitively, in
+// priority order, so e.g. "keywords" still matches a tab literally named "Keywords".
+function resolveTabName(candidates, availableTitles) {
+  const byLowerCase = new Map(availableTitles.map((title) => [title.toLowerCase(), title]));
+  for (const candidate of candidates) {
+    const match = byLowerCase.get(candidate.toLowerCase());
+    if (match) return match;
+  }
+  return null;
+}
+
+function tabNotFoundMessage(availableTitles) {
+  return `Could not find the expected sheet tabs. Found tabs: [${availableTitles.join(', ')}]. Please check your sheet structure.`;
 }
 
 // Sheet dates are plain "M/D/YYYY" strings (not ISO), so they need manual parsing.
@@ -89,12 +140,13 @@ function classifyRank(raw) {
   return 'pending';
 }
 
-async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email) {
+async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email, tabName) {
   ensureSheetsScope(email);
-  const values = await getSheetValues(KEYWORD_SHEET_RANGE, sheetId, email);
+  const range = `${quoteSheetName(tabName)}!A10:ZZ2000`;
+  const values = await getSheetValues(range, sheetId, email);
 
   if (values.length === 0) {
-    return { current: emptyBuckets(), previous: emptyBuckets(), hasData: false };
+    return { current: emptyBuckets(), previous: emptyBuckets(), hasData: false, error: null };
   }
 
   const [headerRow, ...keywordRows] = values;
@@ -117,15 +169,17 @@ async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email)
     current: bucketsForCol(currCol),
     previous: bucketsForCol(prevCol),
     hasData: currCol !== null && rows.length > 0,
+    error: null,
   };
 }
 
-async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email) {
+async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email, tabName) {
   ensureSheetsScope(email);
-  const values = await getSheetValues(KPI_SHEET_RANGE, sheetId, email);
+  const range = `${quoteSheetName(tabName)}!A1:ZZ500`;
+  const values = await getSheetValues(range, sheetId, email);
 
   if (values.length === 0) {
-    return { current: 0, previous: 0, hasData: false };
+    return { current: 0, previous: 0, hasData: false, error: null };
   }
 
   const [headerRow, ...activityRows] = values;
@@ -151,6 +205,7 @@ async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, ema
     current: sumForMonth(currentMonth),
     previous: sumForMonth(comparisonMonth),
     hasData: rows.length > 0 && (hasCurrentCols || hasComparisonCols),
+    error: null,
   };
 }
 
@@ -160,9 +215,19 @@ function pctChange(current, previous) {
 }
 
 async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
+  ensureSheetsScope(email);
+  const tabTitles = await getSheetTabTitles(sheetId, email);
+  const keywordTabName = resolveTabName(KEYWORD_TAB_CANDIDATES, tabTitles);
+  const kpiTabName = resolveTabName(KPI_TAB_CANDIDATES, tabTitles);
+  const notFoundError = tabNotFoundMessage(tabTitles);
+
   const [keywordRankings, offPage] = await Promise.all([
-    getKeywordRankings(currentMonth, comparisonMonth, sheetId, email),
-    getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email),
+    keywordTabName
+      ? getKeywordRankings(currentMonth, comparisonMonth, sheetId, email, keywordTabName)
+      : Promise.resolve({ current: emptyBuckets(), previous: emptyBuckets(), hasData: false, error: notFoundError }),
+    kpiTabName
+      ? getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email, kpiTabName)
+      : Promise.resolve({ current: 0, previous: 0, hasData: false, error: notFoundError }),
   ]);
 
   const bucketKeys = ['top10', 'top11_30', 'top31_50', 'top51_100', 'pending'];
@@ -178,6 +243,7 @@ async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
       previous: offPage.previous,
       change: pctChange(offPage.current, offPage.previous),
       hasData: offPage.hasData,
+      error: offPage.error,
     },
   };
 }

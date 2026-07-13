@@ -76,11 +76,12 @@ router.post('/generate-report', async (req, res) => {
     }
     if (!seoData.keywordRankings.hasData) {
       warnings.push(
-        `No keyword ranking data found for ${currentLabel} in the SEO tracker. The sheet may not have a date column within this month.`
+        seoData.keywordRankings.error ||
+          `No keyword ranking data found for ${currentLabel} in the SEO tracker. The sheet may not have a date column within this month.`
       );
     }
     if (!seoData.offPage.hasData) {
-      warnings.push(`No off-page submission data found for ${currentLabel}.`);
+      warnings.push(seoData.offPage.error || `No off-page submission data found for ${currentLabel}.`);
     }
     if (gaData.hasAnyGa4Data && !gaData.comparisonMonthHasGa4Data) {
       warnings.push(`No comparison period data available — ${comparisonLabel} has no recorded GA4 sessions.`);
