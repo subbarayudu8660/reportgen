@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const { getAuthUrl, handleCallback, isAuthenticated, hasSheetsScope } = require('../services/googleAuth');
 
@@ -10,14 +11,22 @@ router.get('/status', (req, res) => {
 });
 
 router.get('/google', (req, res) => {
-  res.redirect(getAuthUrl());
+  const state = crypto.randomBytes(24).toString('hex');
+  req.session.oauthState = state;
+  res.redirect(getAuthUrl(state));
 });
 
 router.get('/callback', async (req, res) => {
-  const { code, error } = req.query;
+  const { code, error, state } = req.query;
+  const expectedState = req.session.oauthState;
+  delete req.session.oauthState;
 
   if (error) {
     return res.redirect(`/?authError=${encodeURIComponent('Google sign-in was cancelled or denied.')}`);
+  }
+
+  if (!state || !expectedState || state !== expectedState) {
+    return res.status(400).json({ error: 'Invalid or missing OAuth state parameter. Please try signing in again.' });
   }
 
   if (!code) {

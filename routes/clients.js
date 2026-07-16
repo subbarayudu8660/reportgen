@@ -3,6 +3,15 @@ const { getClients, addClient, deleteClient } = require('../services/clients');
 
 const router = express.Router();
 
+function requireAuth(req, res, next) {
+  if (!req.session.email) {
+    return res.status(401).json({ error: 'Not authenticated. Please sign in first.' });
+  }
+  next();
+}
+
+router.use(requireAuth);
+
 router.get('/clients', (req, res) => {
   res.json(getClients());
 });

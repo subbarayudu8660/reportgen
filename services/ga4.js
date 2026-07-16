@@ -1,4 +1,5 @@
 const { getAuthorizedClient } = require('./googleAuth');
+const { pctChange, monthDateRange } = require('./utils');
 
 const GA4_API_BASE = 'https://analyticsdata.googleapis.com/v1beta';
 
@@ -82,15 +83,6 @@ function mapGa4Error(err) {
     httpStatus: 502,
     message: `Google Analytics returned an unexpected error (${status || 'unknown'}). Please try again or contact support.`,
   };
-}
-
-function monthDateRange(monthStr) {
-  // monthStr like "2026-06"
-  const [year, month] = monthStr.split('-').map(Number);
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const endDateObj = new Date(year, month, 0); // last day of month
-  const endDate = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, '0')}-${String(endDateObj.getDate()).padStart(2, '0')}`;
-  return { startDate, endDate };
 }
 
 function rowsToMap(report) {
@@ -261,7 +253,9 @@ async function getTopLandingPages(currentMonth, comparisonMonth, propertyId, ema
       const engagedSessions = r.engagedSessions || 0;
       const comparison = comparisonMap[r.pagePath];
       const prevSessions = comparison ? comparison.sessions : null;
-      const change = prevSessions === null ? null : pctChange(sessions, prevSessions);
+      // `undefined` = no comparison-period data at all for this page; `null` (from
+      // pctChange) = comparison-period value was a real zero, i.e. brand-new traffic.
+      const change = prevSessions === null ? undefined : pctChange(sessions, prevSessions);
       return { pagePath: r.pagePath, sessions, engagedSessions, prevSessions, change };
     })
     .sort((a, b) => b.sessions - a.sessions);
@@ -313,11 +307,6 @@ async function getTrafficOverview(currentMonth, comparisonMonth, propertyId, ema
   };
 }
 
-function pctChange(current, previous) {
-  if (!previous) return current > 0 ? 100 : 0;
-  return ((current - previous) / previous) * 100;
-}
-
 async function getFullReportData(currentMonth, comparisonMonth, propertyId, email) {
   const [
     organicCurr,
@@ -359,7 +348,7 @@ async function getFullReportData(currentMonth, comparisonMonth, propertyId, emai
             avgEngagementTime: pctChange(organicCurr.avgEngagementTime, organicPrev.avgEngagementTime),
             totalEvents: pctChange(organicCurr.totalEvents, organicPrev.totalEvents),
           }
-        : { sessions: null, engagedSessions: null, avgEngagementTime: null, totalEvents: null },
+        : { sessions: undefined, engagedSessions: undefined, avgEngagementTime: undefined, totalEvents: undefined },
     },
     ecommerce: {
       current: funnelCurr,
@@ -372,12 +361,18 @@ async function getFullReportData(currentMonth, comparisonMonth, propertyId, emai
             purchase: pctChange(funnelCurr.purchase, funnelPrev.purchase),
             purchaseRevenue: pctChange(funnelCurr.purchaseRevenue, funnelPrev.purchaseRevenue),
           }
-        : { addToCart: null, beginCheckout: null, addPaymentInfo: null, purchase: null, purchaseRevenue: null },
+        : {
+            addToCart: undefined,
+            beginCheckout: undefined,
+            addPaymentInfo: undefined,
+            purchase: undefined,
+            purchaseRevenue: undefined,
+          },
     },
     landingPages,
     trafficOverview: comparisonMonthHasGa4Data
       ? trafficOverview
-      : { ...trafficOverview, rows: trafficOverview.rows.map((r) => ({ ...r, change: null })) },
+      : { ...trafficOverview, rows: trafficOverview.rows.map((r) => ({ ...r, change: undefined })) },
   };
 }
 

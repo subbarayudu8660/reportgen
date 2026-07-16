@@ -1,4 +1,5 @@
 const { getAuthorizedClient, hasSheetsScope } = require('./googleAuth');
+const { pctChange } = require('./utils');
 
 const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
@@ -207,11 +208,6 @@ async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, ema
     hasData: rows.length > 0 && (hasCurrentCols || hasComparisonCols),
     error: null,
   };
-}
-
-function pctChange(current, previous) {
-  if (!previous) return current > 0 ? 100 : 0;
-  return ((current - previous) / previous) * 100;
 }
 
 async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {

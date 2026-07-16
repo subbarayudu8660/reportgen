@@ -36,10 +36,38 @@ router.post('/generate-report', async (req, res) => {
   const email = req.session.email;
 
   try {
-    const [gaData, seoData] = await Promise.all([
-      getFullReportData(currentMonth, comparisonMonth, client.ga4PropertyId, email),
-      client.sheetId ? getSeoOverview(currentMonth, comparisonMonth, client.sheetId, email) : Promise.resolve(emptySeoData()),
-    ]);
+    const gaData = await getFullReportData(currentMonth, comparisonMonth, client.ga4PropertyId, email);
+
+    // Sheets is fetched separately and never fails the whole report — a bad
+    // sheet ID, missing permission, or transient API error just skips the
+    // SEO slide's data and surfaces a warning, same pattern as Meta Ads below.
+    let seoData;
+    let sheetsWarning = null;
+    if (!client.sheetId) {
+      seoData = emptySeoData();
+      sheetsWarning = 'No Google Sheet configured for this client. Add a Sheet ID in the client settings to enable SEO data.';
+    } else {
+      try {
+        seoData = await getSeoOverview(currentMonth, comparisonMonth, client.sheetId, email);
+      } catch (sheetsErr) {
+        console.error('Sheets API error:', sheetsErr.code, sheetsErr.status, sheetsErr.message);
+        seoData = emptySeoData();
+        if (sheetsErr.code === 'SHEETS_SCOPE_MISSING') {
+          sheetsWarning =
+            'SEO data could not be fetched: Google Sheets access has not been authorized. Please sign out and sign in again to grant Sheets access.';
+        } else if (sheetsErr.status === 403) {
+          sheetsWarning =
+            'SEO data could not be fetched: permission denied. Make sure the signed-in Google account has at least Viewer access to the configured Sheet.';
+        } else if (sheetsErr.status === 404) {
+          sheetsWarning =
+            'SEO data could not be fetched: the configured Sheet ID was not found. Please double-check the Sheet ID in the client settings.';
+        } else if (sheetsErr.status === 400) {
+          sheetsWarning = 'SEO data could not be fetched: the configured Sheet ID is invalid.';
+        } else {
+          sheetsWarning = `SEO data could not be fetched: ${sheetsErr.message}`;
+        }
+      }
+    }
 
     // Meta Ads is fetched separately and never fails the whole report — a bad
     // token or missing ad account just skips the slide and surfaces a warning.
@@ -74,14 +102,18 @@ router.post('/generate-report', async (req, res) => {
         `No data found in GA4 for ${currentLabel}. This period may be before tracking was set up, or no traffic was recorded during this time.`
       );
     }
-    if (!seoData.keywordRankings.hasData) {
-      warnings.push(
-        seoData.keywordRankings.error ||
-          `No keyword ranking data found for ${currentLabel} in the SEO tracker. The sheet may not have a date column within this month.`
-      );
-    }
-    if (!seoData.offPage.hasData) {
-      warnings.push(seoData.offPage.error || `No off-page submission data found for ${currentLabel}.`);
+    if (sheetsWarning) {
+      warnings.push(sheetsWarning);
+    } else {
+      if (!seoData.keywordRankings.hasData) {
+        warnings.push(
+          seoData.keywordRankings.error ||
+            `No keyword ranking data found for ${currentLabel} in the SEO tracker. The sheet may not have a date column within this month.`
+        );
+      }
+      if (!seoData.offPage.hasData) {
+        warnings.push(seoData.offPage.error || `No off-page submission data found for ${currentLabel}.`);
+      }
     }
     if (gaData.hasAnyGa4Data && !gaData.comparisonMonthHasGa4Data) {
       warnings.push(`No comparison period data available — ${comparisonLabel} has no recorded GA4 sessions.`);
@@ -108,12 +140,6 @@ router.post('/generate-report', async (req, res) => {
       console.error('GA4 API error:', e.status, e.apiErrorStatus, e.message);
       const { httpStatus, message } = mapGa4Error(e);
       return res.status(httpStatus).json({ error: message });
-    }
-    if (e.code === 'SHEETS_API_ERROR') {
-      console.error('Sheets API error:', e.status, e.message);
-      return res.status(502).json({
-        error: 'Google Sheets returned an error while fetching SEO data for this period. Please try again or check the sheet configuration.',
-      });
     }
     console.error('Report generation error:', e.message);
     return res.status(500).json({ error: 'Failed to generate report. Please try again.' });

@@ -227,10 +227,25 @@ function populatePeriodSelectors() {
   updateGenerateButtonState();
 }
 
+function periodsAreSamePeriod() {
+  return (
+    currentMonthSelect.value === comparisonMonthSelect.value &&
+    currentYearSelect.value === comparisonYearSelect.value
+  );
+}
+
 function updateGenerateButtonState() {
   const periodsComplete =
     currentMonthSelect.value && currentYearSelect.value && comparisonMonthSelect.value && comparisonYearSelect.value;
-  generateBtn.disabled = !(periodsComplete && activeClientId);
+  const samePeriod = periodsComplete && periodsAreSamePeriod();
+
+  if (samePeriod) {
+    showAlert('Current and Comparison periods cannot be the same month. Please select two different months.', 'error');
+  } else if (alertEl.textContent === 'Current and Comparison periods cannot be the same month. Please select two different months.') {
+    alertEl.hidden = true;
+  }
+
+  generateBtn.disabled = !(periodsComplete && activeClientId) || samePeriod;
 }
 
 function periodLabel(monthSelect, yearSelect) {
@@ -239,12 +254,16 @@ function periodLabel(monthSelect, yearSelect) {
 }
 
 function showWarnings(warnings) {
+  warningsEl.textContent = '';
   if (!warnings || warnings.length === 0) {
     warningsEl.hidden = true;
-    warningsEl.innerHTML = '';
     return;
   }
-  warningsEl.innerHTML = warnings.map((w) => `<p>${w}</p>`).join('');
+  warnings.forEach((w) => {
+    const p = document.createElement('p');
+    p.textContent = w;
+    warningsEl.appendChild(p);
+  });
   warningsEl.hidden = false;
 }
 
@@ -259,9 +278,11 @@ async function checkAuthStatus() {
     stepSignin.hidden = true;
     stepGenerate.hidden = false;
     populatePeriodSelectors();
+    await loadClients();
   } else {
     stepSignin.hidden = false;
     stepGenerate.hidden = true;
+    cardClients.hidden = true;
     if (authenticated && needsReauth) {
       showAlert(
         'Please reconnect your Google account to grant access to Google Sheets for SEO reporting.',
@@ -382,5 +403,4 @@ addClientForm.addEventListener('submit', saveClient);
 deleteClientBtn.addEventListener('click', deleteActiveClient);
 
 handleUrlParams();
-loadClients();
 checkAuthStatus();

@@ -1,5 +1,6 @@
 const META_API_VERSION = 'v19.0';
 const META_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
+const META_TIMEOUT_MS = 30000;
 
 // Computes the first/last calendar day of a "YYYY-MM" month as YYYY-MM-DD strings
 // for the Meta Insights API's time_range parameter.
@@ -11,14 +12,24 @@ function monthDateRange(monthStr) {
   return { since: fmt(since), until: fmt(until) };
 }
 
-async function metaFetch(url) {
+async function metaFetch(url, accessToken) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), META_TIMEOUT_MS);
+
   let res;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal: controller.signal });
   } catch (networkErr) {
+    if (networkErr.name === 'AbortError') {
+      const err = new Error('Meta Ads API timed out after 30 seconds. Please try again.');
+      err.code = 'META_TIMEOUT';
+      throw err;
+    }
     const err = new Error(`Could not reach the Meta Graph API: ${networkErr.message}`);
     err.code = 'META_API_ERROR';
     throw err;
+  } finally {
+    clearTimeout(timeout);
   }
 
   const body = await res.json().catch(() => ({}));
@@ -71,10 +82,13 @@ async function getMetaAdsData(adAccountId, monthStr) {
   const { since, until } = monthDateRange(monthStr);
   const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
 
-  const insightsUrl = `${META_BASE}/${adAccountId}/insights?time_range=${timeRange}&fields=campaign_name,impressions,clicks,spend,reach,actions&level=account&access_token=${accessToken}`;
-  const campaignsUrl = `${META_BASE}/${adAccountId}/campaigns?fields=id,name,status&access_token=${accessToken}`;
+  const insightsUrl = `${META_BASE}/${adAccountId}/insights?time_range=${timeRange}&fields=campaign_name,impressions,clicks,spend,reach,actions&level=account`;
+  const campaignsUrl = `${META_BASE}/${adAccountId}/campaigns?fields=id,name,status`;
 
-  const [insightsBody, campaignsBody] = await Promise.all([metaFetch(insightsUrl), metaFetch(campaignsUrl)]);
+  const [insightsBody, campaignsBody] = await Promise.all([
+    metaFetch(insightsUrl, accessToken),
+    metaFetch(campaignsUrl, accessToken),
+  ]);
 
   const insightsRow = (insightsBody.data && insightsBody.data[0]) || {};
   const activeCampaigns = (campaignsBody.data || []).filter((c) => c.status === 'ACTIVE');

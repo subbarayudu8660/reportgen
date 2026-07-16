@@ -16,7 +16,12 @@ function monthLabel(monthStr) {
   return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 }
 
+// `null` means "previous period was 0, current is nonzero" (pctChange's "New"
+// case) — a real percent change is undefined in that scenario, so render "New"
+// rather than a misleading number. `undefined`/NaN means no comparison data at all.
 function fmtPct(n) {
+  if (n === null) return 'New';
+  if (n === undefined || !Number.isFinite(n)) return 'N/A';
   const sign = n >= 0 ? '+' : '';
   return `${sign}${n.toFixed(1)}%`;
 }
@@ -40,17 +45,16 @@ function trend(n) {
 }
 
 function changeColor(n) {
-  if (n === null || n === undefined || !Number.isFinite(n)) return NEUTRAL;
+  if (n === null) return POSITIVE;
+  if (n === undefined || !Number.isFinite(n)) return NEUTRAL;
   if (n > 0) return POSITIVE;
   if (n < 0) return NEGATIVE;
   return NEUTRAL;
 }
 
-// Marks a table cell as a colored % change value (green/red/grey), handling N/A.
+// Marks a table cell as a colored % change value (green/red/grey), handling
+// "New" (null — previous period was 0) and "N/A" (undefined/NaN — no comparison data).
 function pctCell(n) {
-  if (n === null || n === undefined || !Number.isFinite(n)) {
-    return { text: 'N/A', highlight: NEUTRAL };
-  }
   return { text: fmtPct(n), highlight: changeColor(n) };
 }
 
@@ -88,17 +92,26 @@ function addSummary(slide, text) {
   });
 }
 
-function addFooter(slide, monthStr) {
-  slide.addText(`${BRAND} — ${monthLabel(monthStr)} Report`, {
-    x: 6.0,
+function addFooter(slide, monthStr, clientName) {
+  slide.addText(`${clientName || BRAND} | Digital Marketing Report | ${monthLabel(monthStr)}`, {
+    x: 4.5,
     y: 5.35,
-    w: 3.5,
+    w: 4.5,
     h: 0.25,
     fontSize: 9,
     color: NEUTRAL,
     fontFace: 'Arial',
     align: 'right',
   });
+  slide.slideNumber = {
+    x: 9.3,
+    y: 5.35,
+    w: 0.4,
+    h: 0.25,
+    fontSize: 9,
+    color: NEUTRAL,
+    fontFace: 'Arial',
+  };
 }
 
 function addTable(slide, rows, colWidths, opts = {}) {
@@ -150,7 +163,7 @@ function buildTrafficOverviewSlide(pptx, data) {
       slide,
       `No session data by channel was returned for ${currLabel} or ${prevLabel}. Confirm channel grouping is configured for this property.`
     );
-    addFooter(slide, data.currentMonth);
+    addFooter(slide, data.currentMonth, data.clientName);
     return slide;
   }
 
@@ -189,7 +202,7 @@ function buildTrafficOverviewSlide(pptx, data) {
   });
 
   addTable(slide, rows, [3, 2, 2, 2]);
-  addFooter(slide, data.currentMonth);
+  addFooter(slide, data.currentMonth, data.clientName);
 
   return slide;
 }
@@ -217,7 +230,7 @@ function buildSeoOverviewSlide(pptx, data) {
       slide,
       `No SEO data (keyword rankings or off-page submissions) was found in the connected Google Sheet for ${currLabel} or ${prevLabel}.`
     );
-    addFooter(slide, data.currentMonth);
+    addFooter(slide, data.currentMonth, data.clientName);
     return slide;
   }
 
@@ -272,7 +285,7 @@ function buildSeoOverviewSlide(pptx, data) {
   }
   addTable(slide, rightRows, [1.8, 1.1, 1.1, 1.2], { x: 5.7, y: 2.25, w: 4 });
 
-  addFooter(slide, data.currentMonth);
+  addFooter(slide, data.currentMonth, data.clientName);
 
   return slide;
 }
@@ -289,7 +302,7 @@ function buildOrganicSearchSlide(pptx, data) {
       slide,
       `No organic search data was returned for ${label}. This may mean the property has no Organic Search traffic in this period, or channel grouping is not configured.`
     );
-    addFooter(slide, data.currentMonth);
+    addFooter(slide, data.currentMonth, data.clientName);
     return slide;
   }
 
@@ -341,7 +354,7 @@ function buildOrganicSearchSlide(pptx, data) {
     ],
     [3, 2, 2, 2]
   );
-  addFooter(slide, data.currentMonth);
+  addFooter(slide, data.currentMonth, data.clientName);
 
   return slide;
 }
@@ -371,7 +384,7 @@ function buildEcommerceSlide(pptx, data) {
       ],
       [3, 2, 2, 2]
     );
-    addFooter(slide, data.currentMonth);
+    addFooter(slide, data.currentMonth, data.clientName);
 
     return slide;
   }
@@ -429,7 +442,7 @@ function buildEcommerceSlide(pptx, data) {
     ],
     [3, 2, 2, 2]
   );
-  addFooter(slide, data.currentMonth);
+  addFooter(slide, data.currentMonth, data.clientName);
 
   return slide;
 }
@@ -447,7 +460,7 @@ function buildLandingPagesSlide(pptx, data) {
 
   if (!hasData) {
     addSummary(slide, `No landing page session data was returned for ${label}.`);
-    addFooter(slide, data.currentMonth);
+    addFooter(slide, data.currentMonth, data.clientName);
     return slide;
   }
 
@@ -487,7 +500,7 @@ function buildLandingPagesSlide(pptx, data) {
   });
 
   addTable(slide, rows, [3.5, 1.5, 1.5, 1.5, 1.5]);
-  addFooter(slide, data.currentMonth);
+  addFooter(slide, data.currentMonth, data.clientName);
 
   return slide;
 }
