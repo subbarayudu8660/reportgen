@@ -2,6 +2,7 @@ const express = require('express');
 const { getFullReportData, mapGa4Error } = require('../services/ga4');
 const { getSeoOverview } = require('../services/sheets');
 const { getMetaAdsData } = require('../services/meta');
+const { getGoogleAdsData } = require('../services/googleAds');
 const { generateReportPptx, monthLabel } = require('../services/pptx');
 const { getClientById } = require('../services/clients');
 
@@ -82,11 +83,35 @@ router.post('/generate-report', async (req, res) => {
       }
     }
 
+    // Google Ads is fetched separately and never fails the whole report — a bad
+    // token, unapproved developer token, or missing customer ID just skips the
+    // slide and surfaces a warning (same resilience pattern as Meta Ads above).
+    let googleAdsData = null;
+    let googleAdsWarning = null;
+    if (client.googleAdsCustomerId) {
+      try {
+        googleAdsData = await getGoogleAdsData(client.googleAdsCustomerId, currentMonth, email);
+      } catch (googleAdsErr) {
+        console.error('Google Ads API error:', googleAdsErr.code, googleAdsErr.message);
+        if (googleAdsErr.code === 'GOOGLE_ADS_TOKEN_REQUIRED') {
+          googleAdsWarning =
+            'Google Ads developer token is pending Basic Access approval. Google Ads data will appear automatically once approved — no code changes needed.';
+        } else if (googleAdsErr.code === 'GOOGLE_ADS_PERMISSION_DENIED') {
+          googleAdsWarning =
+            'Your Google account does not have access to this Google Ads account. Ask the account owner to add your email as an Admin.';
+        } else if (googleAdsErr.code !== 'GOOGLE_ADS_NO_ACCOUNT') {
+          googleAdsWarning = `Google Ads data could not be fetched: ${googleAdsErr.message}`;
+        }
+      }
+    }
+
     // When a Meta Ad Account ID is configured, API data replaces the manual Meta
     // Ads form fields on the Paid Media slide; manual entry is only a fallback
-    // for clients with no ad account configured.
+    // for clients with no ad account configured. Google Ads works the same way,
+    // but the manual form has no direct API-shaped equivalent to override — the
+    // manual googleAds fields stay untouched when no Google Ads customer ID is set.
     const effectivePaidMedia = {
-      googleAds: paidMedia && paidMedia.googleAds,
+      googleAds: client.googleAdsCustomerId && googleAdsData ? googleAdsData : paidMedia && paidMedia.googleAds,
       metaAds: client.metaAdAccountId ? metaAdsData : paidMedia && paidMedia.metaAds,
     };
 
@@ -120,6 +145,9 @@ router.post('/generate-report', async (req, res) => {
     }
     if (metaAdsWarning) {
       warnings.push(metaAdsWarning);
+    }
+    if (googleAdsWarning) {
+      warnings.push(googleAdsWarning);
     }
 
     const filename = `WebrocketAI-Report-${currentLabel.replace(' ', '-')}-vs-${comparisonLabel.replace(' ', '-')}.pptx`;

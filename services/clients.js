@@ -26,6 +26,12 @@ function normalizeMetaAdAccountId(id) {
   return trimmed.startsWith('act_') ? trimmed : `act_${trimmed}`;
 }
 
+// Google Ads customer IDs are 10 digits with no dashes for API calls, but
+// users commonly copy the dashed "123-456-7890" format from Ads Manager.
+function normalizeGoogleAdsCustomerId(id) {
+  return (id || '').replace(/-/g, '').trim();
+}
+
 // Seeds clients.json from the .env GA4/Sheet defaults exactly once, the first
 // time the app is used with no clients configured yet. Once any client exists
 // (even after all are later deleted down to zero... no: only when the file is
@@ -44,6 +50,7 @@ function ensureSeeded() {
       ga4PropertyId: GA4_PROPERTY_ID,
       sheetId: GOOGLE_SHEET_ID || '',
       metaAdAccountId: normalizeMetaAdAccountId(META_AD_ACCOUNT_ID),
+      googleAdsCustomerId: '',
       createdAt: new Date().toISOString(),
     },
   ];
@@ -59,7 +66,7 @@ function getClientById(id) {
   return getClients().find((c) => c.id === id) || null;
 }
 
-function addClient({ name, ga4PropertyId, sheetId, metaAdAccountId }) {
+function addClient({ name, ga4PropertyId, sheetId, metaAdAccountId, googleAdsCustomerId }) {
   const clients = loadClients();
   const client = {
     id: crypto.randomUUID(),
@@ -67,6 +74,7 @@ function addClient({ name, ga4PropertyId, sheetId, metaAdAccountId }) {
     ga4PropertyId,
     sheetId: sheetId || '',
     metaAdAccountId: normalizeMetaAdAccountId(metaAdAccountId),
+    googleAdsCustomerId: normalizeGoogleAdsCustomerId(googleAdsCustomerId),
     createdAt: new Date().toISOString(),
   };
   clients.push(client);

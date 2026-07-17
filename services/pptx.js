@@ -560,15 +560,36 @@ function addPaidMediaSectionHeader(slide, label, y) {
   });
 }
 
+// API-sourced Google Ads data carries a `cpc` field (computed server-side from
+// totalSpend/clicks); manual form entries never set it. Column order/set differs
+// slightly between the two since CPC only makes sense once real spend+click data exists.
 function buildGoogleAdsTable(slide, googleAds, y) {
+  const numOrDash = (n) => (n === null || n === undefined ? null : fmtNum(n));
+  const isApiSourced = googleAds.cpc !== null && googleAds.cpc !== undefined;
+
+  if (isApiSourced) {
+    const header = ['Total Campaigns', 'Spend', 'Impressions', 'Clicks', 'Conversions', 'CPC'];
+    const dataRow = [
+      'Total',
+      paidMediaCell(numOrDash(googleAds.totalCampaigns)),
+      paidMediaCell(googleAds.totalSpend),
+      paidMediaCell(numOrDash(googleAds.impressions)),
+      paidMediaCell(numOrDash(googleAds.clicks)),
+      paidMediaCell(numOrDash(googleAds.conversions)),
+      paidMediaCell(googleAds.cpc),
+    ];
+    addTable(slide, [['', ...header], dataRow], [0.9, 1.4, 1.3, 1.3, 1.2, 1.4, 1.5], { x: 0.5, y, w: 9 });
+    return;
+  }
+
   const header = ['Total Campaigns', 'Conversions', 'Spend', 'Impressions', 'Clicks'];
   const dataRow = [
     'Total',
-    paidMediaCell(googleAds.totalCampaigns === null || googleAds.totalCampaigns === undefined ? null : fmtNum(googleAds.totalCampaigns)),
-    paidMediaCell(googleAds.conversions === null || googleAds.conversions === undefined ? null : fmtNum(googleAds.conversions)),
+    paidMediaCell(numOrDash(googleAds.totalCampaigns)),
+    paidMediaCell(numOrDash(googleAds.conversions)),
     paidMediaCell(googleAds.totalSpend),
-    paidMediaCell(googleAds.impressions === null || googleAds.impressions === undefined ? null : fmtNum(googleAds.impressions)),
-    paidMediaCell(googleAds.clicks === null || googleAds.clicks === undefined ? null : fmtNum(googleAds.clicks)),
+    paidMediaCell(numOrDash(googleAds.impressions)),
+    paidMediaCell(numOrDash(googleAds.clicks)),
   ];
 
   const rows = [['', ...header], dataRow];
@@ -577,6 +598,14 @@ function buildGoogleAdsTable(slide, googleAds, y) {
   }
 
   addTable(slide, rows, [1.4, 1.6, 1.4, 1.8, 1.4, 1.4], { x: 0.5, y, w: 9 });
+}
+
+function googleAdsSummaryText(googleAds, monthStr) {
+  return `Google Ads delivered ${fmtNum(googleAds.impressions)} impressions and ${fmtNum(
+    googleAds.clicks
+  )} clicks in ${monthLabel(monthStr)}, with a total spend of ${googleAds.totalSpend} across ${
+    googleAds.totalCampaigns
+  } campaigns and ${fmtNum(googleAds.conversions)} conversions.`;
 }
 
 function buildMetaAdsTable(slide, metaAds, y) {
@@ -646,6 +675,19 @@ function buildPaidMediaSlide(pptx, data) {
   if (hasGoogle) {
     buildGoogleAdsTable(slide, googleAds, y);
     y += googleAds.gstAmount ? 1.15 : 0.85;
+    if (googleAds.cpc !== null && googleAds.cpc !== undefined) {
+      slide.addText(googleAdsSummaryText(googleAds, data.currentMonth), {
+        x: 0.5,
+        y,
+        w: 9,
+        h: 0.4,
+        fontSize: 10.5,
+        color: TEXT_DARK,
+        fontFace: 'Arial',
+        valign: 'top',
+      });
+      y += 0.45;
+    }
   } else {
     slide.addText('Not configured for this period', {
       x: 0.5,
