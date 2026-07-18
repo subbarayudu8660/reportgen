@@ -14,6 +14,7 @@ const {
   exactMatchTab,
   isKeywordTabName,
   isOffPageTabName,
+  isOffPageDetailTabName,
   isKpiTrafficTabName,
   pickBestTab,
   resolveTabs,
@@ -99,13 +100,30 @@ test('tab name matching: keyword tab', () => {
   assert.equal(isKeywordTabName('KPI'), false);
 });
 
-test('tab name matching: off-page tab covers KPI_2 variants and submission wording', () => {
+test('tab name matching: off-page (summary) tab covers KPI_2 variants and submission wording', () => {
   assert.equal(isOffPageTabName('KPI_2'), true);
   assert.equal(isOffPageTabName('KPI 2'), true);
   assert.equal(isOffPageTabName('Off-Page Submissions'), true);
   assert.equal(isOffPageTabName('OffPage'), true);
   assert.equal(isOffPageTabName('Activity Tracker'), true);
   assert.equal(isOffPageTabName("KPI's"), false);
+});
+
+test('tab name matching: off-page DETAIL (per-submission log) tab is recognized and excluded from the summary category', () => {
+  assert.equal(isOffPageDetailTabName('Off-page SEO Submission Tracker'), true);
+  assert.equal(isOffPageDetailTabName('Off-page Submission Tracker'), true);
+  assert.equal(isOffPageDetailTabName('Submission Tracker'), true);
+  assert.equal(isOffPageDetailTabName('KPI_2'), false);
+  assert.equal(isOffPageDetailTabName('Activity Tracker'), false);
+
+  // The detail-log names must NOT also be classified as the KPI_2-style
+  // summary tab, or the two categories would collide.
+  assert.equal(isOffPageTabName('Off-page SEO Submission Tracker'), false);
+  assert.equal(isOffPageTabName('Off-page Submission Tracker'), false);
+  assert.equal(isOffPageTabName('Submission Tracker'), false);
+  // "Activity Tracker" has no "submission"/"off-page" wording paired with
+  // "tracker", so it still correctly resolves as a summary-tab indicator.
+  assert.equal(isOffPageTabName('Activity Tracker'), true);
 });
 
 test('tab name matching: KPI traffic tab excludes the off-page KPI_2/KPI 2 tab', () => {
@@ -196,6 +214,18 @@ test('resolveTabs: warns implicitly by returning null when a whole category is m
   assert.equal(keywordTab, null);
   assert.equal(offPageTab, null);
   assert.equal(kpiTrafficTab, null);
+});
+
+test('resolveTabs: off-page detail (per-submission log) resolves independently of the KPI_2 summary tab', () => {
+  const { offPageTab, offPageDetailTab } = resolveTabs(['KPI_2', 'Off-page SEO Submission Tracker']);
+  assert.equal(offPageTab, 'KPI_2');
+  assert.equal(offPageDetailTab, 'Off-page SEO Submission Tracker');
+});
+
+test('resolveTabs: off-page detail tab resolves on its own (Dream Timbers-style sheet) when there is no KPI_2 tab at all', () => {
+  const { offPageTab, offPageDetailTab } = resolveTabs(['Keyword Ranking Report', "KPI's", 'Off-page SEO Submission Tracker']);
+  assert.equal(offPageTab, null);
+  assert.equal(offPageDetailTab, 'Off-page SEO Submission Tracker');
 });
 
 test('forwardFillRow fills blanks left over from merged header cells', () => {

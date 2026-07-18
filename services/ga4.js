@@ -116,6 +116,25 @@ async function getMonthSessionTotal(monthStr, propertyId, email) {
   return sumMetric(report, 'sessions');
 }
 
+// Unfiltered, account-wide totals for the reporting period — feeds the Top
+// Landing Pages slide's hero stat cards (total page views, active users, and
+// the derived pages-per-user engagement figure).
+async function getSiteTotals(monthStr, propertyId, email) {
+  const { startDate, endDate } = monthDateRange(monthStr);
+  const report = await runReport(
+    {
+      dateRanges: [{ startDate, endDate }],
+      metrics: [{ name: 'screenPageViews' }, { name: 'activeUsers' }],
+    },
+    propertyId,
+    email
+  );
+  const screenPageViews = sumMetric(report, 'screenPageViews');
+  const activeUsers = sumMetric(report, 'activeUsers');
+  const pagesPerUser = activeUsers > 0 ? Math.round((screenPageViews / activeUsers) * 100) / 100 : null;
+  return { screenPageViews, activeUsers, pagesPerUser };
+}
+
 async function getOrganicSearchMetrics(monthStr, propertyId, email) {
   const { startDate, endDate } = monthDateRange(monthStr);
   const report = await runReport(
@@ -317,6 +336,7 @@ async function getFullReportData(currentMonth, comparisonMonth, propertyId, emai
     trafficOverview,
     currSessionTotal,
     prevSessionTotal,
+    siteTotals,
   ] = await Promise.all([
     getOrganicSearchMetrics(currentMonth, propertyId, email),
     getOrganicSearchMetrics(comparisonMonth, propertyId, email),
@@ -326,6 +346,7 @@ async function getFullReportData(currentMonth, comparisonMonth, propertyId, emai
     getTrafficOverview(currentMonth, comparisonMonth, propertyId, email),
     getMonthSessionTotal(currentMonth, propertyId, email),
     getMonthSessionTotal(comparisonMonth, propertyId, email),
+    getSiteTotals(currentMonth, propertyId, email),
   ]);
 
   // Whether GA4 returned *any* sessions at all for a month, independent of channel/event
@@ -369,7 +390,7 @@ async function getFullReportData(currentMonth, comparisonMonth, propertyId, emai
             purchaseRevenue: undefined,
           },
     },
-    landingPages,
+    landingPages: { ...landingPages, ...siteTotals },
     trafficOverview: comparisonMonthHasGa4Data
       ? trafficOverview
       : { ...trafficOverview, rows: trafficOverview.rows.map((r) => ({ ...r, change: undefined })) },

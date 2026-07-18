@@ -247,7 +247,11 @@ async function getSheetTabTitles(sheetId, email) {
 const TAB_VARIANTS = {
   keywords: ['Keyword Ranking Report', 'Keywords Ranking Report', 'Keyword Rankings'],
   kpi: ["KPI's", 'KPIs', 'KPI', 'Monthly KPIs'],
-  offpage: ['KPI_2', 'KPI 2', 'Off-page SEO Submission Tracker'],
+  offpage: ['KPI_2', 'KPI 2'],
+  // A per-submission log (one row per submission, dated in column A) rather
+  // than a KPI_2-style monthly summary table — some clients (e.g. Dream
+  // Timbers) keep detailed logs here instead of populating KPI_2 at all.
+  offpageDetail: ['Off-page SEO Submission Tracker', 'Off-page Submission Tracker', 'Submission Tracker'],
 };
 
 function exactMatchTab(variants, availableTitles) {
@@ -263,7 +267,16 @@ function isKeywordTabName(name) {
   return normalizeLabel(name).includes('keyword');
 }
 
+// The detailed per-submission log is distinguished from the KPI_2 summary
+// tab by "tracker" wording (KPI_2-style summary tabs are never named this
+// way in practice) — checked first so the summary predicate below can
+// exclude it.
+function isOffPageDetailTabName(name) {
+  return labelContainsAny(name, ['off-page seo submission tracker', 'off-page submission tracker', 'submission tracker']);
+}
+
 function isOffPageTabName(name) {
+  if (isOffPageDetailTabName(name)) return false;
   return labelContainsAny(name, ['kpi_2', 'kpi 2', 'off-page', 'offpage', 'submission', 'activity tracker']);
 }
 
@@ -290,14 +303,14 @@ function resolveTab(exactVariants, dynamicPredicate, availableTitles) {
 }
 
 function resolveTabs(availableTitles) {
-  // Off-page is resolved before the generic KPI tab so that a sheet with
-  // both "KPI_2" and "KPI" tabs never lets the KPI-traffic fallback (which
-  // only excludes tabs it itself classifies as off-page) accidentally
-  // swallow the off-page tab first.
+  // Off-page detail (the per-submission log) is resolved before the KPI_2
+  // summary category and before the generic KPI tab, so neither of the more
+  // permissive fallback predicates can accidentally swallow it.
+  const offPageDetailTab = resolveTab(TAB_VARIANTS.offpageDetail, isOffPageDetailTabName, availableTitles);
   const offPageTab = resolveTab(TAB_VARIANTS.offpage, isOffPageTabName, availableTitles);
   const keywordTab = resolveTab(TAB_VARIANTS.keywords, isKeywordTabName, availableTitles);
   const kpiTrafficTab = resolveTab(TAB_VARIANTS.kpi, isKpiTrafficTabName, availableTitles);
-  return { keywordTab, offPageTab, kpiTrafficTab };
+  return { keywordTab, offPageTab, offPageDetailTab, kpiTrafficTab };
 }
 
 function tabNotFoundMessage(sectionLabel, availableTitles) {
@@ -490,10 +503,21 @@ async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email,
 }
 
 // ---------------------------------------------------------------------------
-// Off-page / submissions activity tab
+// Off-page / submissions — two possible sources.
+//
+// 1. A KPI_2-style SUMMARY tab: row 1 is dates per-day across columns, rows
+//    2+ are named activity types, each cell a count — summed per month.
+// 2. A detailed per-submission LOG tab (e.g. "Off-page SEO Submission
+//    Tracker"): one row per individual submission, with a DATE in column A
+//    (typically) — the monthly count is just the number of rows whose date
+//    falls in the target month. Some clients (e.g. Dream Timbers) only keep
+//    this detailed log and never populate the KPI_2 summary at all.
+//
+// The summary tab is tried first (existing behavior); if it has no usable
+// data for the current period, the detailed log is used as a fallback.
 // ---------------------------------------------------------------------------
 
-async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email, tabName) {
+async function getOffPageSummary(currentMonth, comparisonMonth, sheetId, email, tabName) {
   ensureSheetsScope(email);
   const range = `${quoteSheetName(tabName)}!A1:ZZ500`;
   const values = await getSheetValues(range, sheetId, email);
@@ -533,6 +557,76 @@ async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, ema
     hasData: rows.length > 0 && (hasCurrentCols || hasComparisonCols),
     error,
   };
+}
+
+// Counts rows whose column A parses as a date within the target month —
+// no header-row assumption needed, since a non-date header cell (e.g.
+// "Date" or "Submission Date") simply fails to parse and is skipped, same
+// as any other non-date cell.
+async function getOffPageDetailCounts(currentMonth, comparisonMonth, sheetId, email, tabName) {
+  ensureSheetsScope(email);
+  const range = `${quoteSheetName(tabName)}!A1:ZZ5000`;
+  const values = await getSheetValues(range, sheetId, email);
+
+  if (values.length === 0) {
+    return { current: null, previous: null, hasData: false, error: `The "${tabName}" tab is empty.` };
+  }
+
+  function countForMonth(monthStr) {
+    const [year, month] = monthStr.split('-').map(Number);
+    let count = 0;
+    values.forEach((row) => {
+      const parsed = parseFlexibleDate(row[0]);
+      if (parsed && parsed.year === year && parsed.month === month) count++;
+    });
+    return count;
+  }
+
+  const anyDatesFound = values.some((row) => parseFlexibleDate(row[0]) !== null);
+
+  return {
+    current: countForMonth(currentMonth),
+    previous: countForMonth(comparisonMonth),
+    hasData: anyDatesFound,
+    error: anyDatesFound ? null : `No date column found in the "${tabName}" tab — column A never parsed as a date.`,
+  };
+}
+
+// Tries the KPI_2 summary tab first; falls back to counting rows in the
+// detailed submission-log tab when the summary has nothing usable for the
+// current period (tab not found, or a real zero/no-date-column result).
+// Logs which method was actually used so it's unambiguous in testing.
+async function resolveOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email, offPageTabName, offPageDetailTabName, availableTitles) {
+  const summaryResult = offPageTabName
+    ? await getOffPageSummary(currentMonth, comparisonMonth, sheetId, email, offPageTabName)
+    : null;
+
+  const summaryUsable = summaryResult !== null && summaryResult.hasData && summaryResult.current > 0;
+  if (summaryUsable) {
+    console.log(`[sheets] Off-page submissions: using KPI_2 summary tab ("${offPageTabName}") — ${summaryResult.current} for ${currentMonth}.`);
+    return { ...summaryResult, error: null };
+  }
+
+  if (offPageDetailTabName) {
+    const detailResult = await getOffPageDetailCounts(currentMonth, comparisonMonth, sheetId, email, offPageDetailTabName);
+    if (detailResult.hasData) {
+      const reason = summaryResult === null
+        ? 'no KPI_2-style summary tab was found'
+        : `the summary tab ("${offPageTabName}") had no usable data for ${currentMonth}`;
+      console.log(`[sheets] Off-page submissions: ${reason}; falling back to detailed row-count from "${offPageDetailTabName}" — ${detailResult.current} for ${currentMonth}.`);
+      return { ...detailResult, error: null };
+    }
+  }
+
+  const checked = [];
+  if (offPageTabName) checked.push(`"${offPageTabName}" (summary)`);
+  if (offPageDetailTabName) checked.push(`"${offPageDetailTabName}" (detailed log)`);
+
+  const error = checked.length > 0
+    ? `No off-page submission data found for ${monthYearLabel(currentMonth)} in either the summary or detailed tracker tab. Tabs checked: ${checked.join(', ')}.`
+    : tabNotFoundMessage('Off-page submissions', availableTitles);
+
+  return { current: null, previous: null, hasData: false, error };
 }
 
 // ---------------------------------------------------------------------------
@@ -627,7 +721,7 @@ function getKpiAuthority(values, currentMonth, comparisonMonth) {
 async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
   ensureSheetsScope(email);
   const tabTitles = await getSheetTabTitles(sheetId, email);
-  const { keywordTab, offPageTab, kpiTrafficTab } = resolveTabs(tabTitles);
+  const { keywordTab, offPageTab, offPageDetailTab, kpiTrafficTab } = resolveTabs(tabTitles);
 
   const warnings = [];
 
@@ -641,9 +735,15 @@ async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
         comparisonError: null,
       });
 
-  const offPagePromise = offPageTab
-    ? getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email, offPageTab)
-    : Promise.resolve({ current: 0, previous: 0, hasData: false, error: tabNotFoundMessage('Off-page submissions', tabTitles) });
+  const offPagePromise = resolveOffPageSubmissions(
+    currentMonth,
+    comparisonMonth,
+    sheetId,
+    email,
+    offPageTab,
+    offPageDetailTab,
+    tabTitles
+  );
 
   const kpiAuthorityPromise = kpiTrafficTab
     ? getSheetValues(`${quoteSheetName(kpiTrafficTab)}!A1:ZZ500`, sheetId, email).then((values) =>
@@ -680,7 +780,10 @@ async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
     offPage: {
       current: offPage.current,
       previous: offPage.previous,
-      change: pctChange(offPage.current, offPage.previous),
+      change:
+        offPage.current === null || offPage.previous === null
+          ? undefined
+          : pctChange(offPage.current, offPage.previous),
       hasData: offPage.hasData,
       error: offPage.error,
     },
@@ -706,6 +809,7 @@ module.exports = {
     exactMatchTab,
     isKeywordTabName,
     isOffPageTabName,
+    isOffPageDetailTabName,
     isKpiTrafficTabName,
     pickBestTab,
     resolveTab,
@@ -719,5 +823,8 @@ module.exports = {
     findMonthColumns,
     findKeywordHeaderRowIndex,
     getKpiAuthority,
+    getOffPageSummary,
+    getOffPageDetailCounts,
+    resolveOffPageSubmissions,
   },
 };

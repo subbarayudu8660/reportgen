@@ -460,11 +460,49 @@ function displayPagePath(pagePath) {
   return pagePath === '/' ? 'Homepage' : pagePath;
 }
 
+// A stacked hero-stat box: a big bold number (optionally followed by a small
+// inline suffix run, e.g. "pages/user") over a smaller descriptive label,
+// on a light rounded card — used for the Top Landing Pages slide's stat column.
+function addStatCard(slide, { x, y, w, h, valueRuns, label }) {
+  slide.addShape('roundRect', {
+    x,
+    y,
+    w,
+    h,
+    fill: { color: ROW_ALT },
+    line: { type: 'none' },
+    rectRadius: 0.08,
+  });
+
+  const valueH = h * 0.42;
+  slide.addText(valueRuns, {
+    x,
+    y: y + 0.06,
+    w,
+    h: valueH,
+    align: 'center',
+    valign: 'bottom',
+    fontFace: 'Arial',
+  });
+
+  slide.addText(label, {
+    x: x + 0.12,
+    y: y + 0.06 + valueH,
+    w: w - 0.24,
+    h: h - valueH - 0.12,
+    align: 'center',
+    valign: 'top',
+    fontSize: 8.5,
+    color: NEUTRAL,
+    fontFace: 'Arial',
+  });
+}
+
 function buildLandingPagesSlide(pptx, data) {
   const slide = pptx.addSlide();
   addSlideChrome(slide, 'Top Landing Pages');
 
-  const { pages, hasData } = data.landingPages;
+  const { pages, hasData, screenPageViews, activeUsers, pagesPerUser } = data.landingPages;
   const label = monthLabel(data.currentMonth);
 
   if (!hasData) {
@@ -508,7 +546,49 @@ function buildLandingPagesSlide(pptx, data) {
     ]);
   });
 
-  addTable(slide, rows, [3.5, 1.5, 1.5, 1.5, 1.5]);
+  // Table takes ~65% of the content width; the remaining ~30% (with a small
+  // gap) holds three stacked hero stat cards.
+  addTable(slide, rows, [2.3, 1.0, 1.05, 1.05, 0.8], { x: 0.5, y: 2.25, w: 6.2 });
+
+  const cardX = 7.0;
+  const cardW = 2.5;
+  const cardH = 0.85;
+  const cardGap = 0.15;
+
+  addStatCard(slide, {
+    x: cardX,
+    y: 2.25,
+    w: cardW,
+    h: cardH,
+    valueRuns: [{ text: fmtNum(screenPageViews), options: { fontSize: 26, bold: true, color: ACCENT } }],
+    label: 'Total page views recorded during this reporting period',
+  });
+
+  addStatCard(slide, {
+    x: cardX,
+    y: 2.25 + cardH + cardGap,
+    w: cardW,
+    h: cardH,
+    valueRuns: [{ text: fmtNum(activeUsers), options: { fontSize: 26, bold: true, color: ACCENT } }],
+    label: 'Active users who viewed the site',
+  });
+
+  const pagesPerUserText = pagesPerUser === null ? 'N/A' : pagesPerUser.toFixed(2);
+  addStatCard(slide, {
+    x: cardX,
+    y: 2.25 + 2 * (cardH + cardGap),
+    w: cardW,
+    h: cardH,
+    valueRuns: [
+      { text: pagesPerUserText, options: { fontSize: 26, bold: true, color: ACCENT } },
+      { text: ' pages/user', options: { fontSize: 10, color: TEXT_DARK } },
+    ],
+    label:
+      pagesPerUser === null
+        ? 'Pages-per-user could not be calculated for this period.'
+        : `On average, each visitor viewed ${pagesPerUserText} pages during their visit, indicating they explored multiple pages across the website.`,
+  });
+
   addFooter(slide, data.currentMonth, data.clientName);
 
   return slide;
