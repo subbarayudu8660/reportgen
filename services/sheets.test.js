@@ -24,7 +24,8 @@ const {
   forwardFillRow,
   findMonthColumns,
   findKeywordHeaderRowIndex,
-  getKpiTrafficAndAuthority,
+  getKpiAuthority,
+  monthYearLabel,
 } = _internal;
 
 test('normalizeLabel trims, lowercases, and normalizes apostrophes', () => {
@@ -247,7 +248,7 @@ test('findKeywordHeaderRowIndex: labels scattered at arbitrary/random row positi
   assert.equal(headerIdx, 5);
 });
 
-test('getKpiTrafficAndAuthority scans labels/columns dynamically and warns on missing rows', () => {
+test('getKpiAuthority pulls DA/PA only — no traffic-by-channel data (that is GA4\'s job)', () => {
   const values = [
     ['Metric', 'JAN', '', 'FEB', ''],
     ['', 'Week 1', 'Week 2', 'Week 1', 'Week 2'],
@@ -255,23 +256,25 @@ test('getKpiTrafficAndAuthority scans labels/columns dynamically and warns on mi
     ['Direct', '10', '20', '5', '5'],
     ['DA', '45', '45', '46', '46'],
   ];
-  const result = getKpiTrafficAndAuthority(values, '2026-01', '2026-02');
-  assert.equal(result.trafficByChannel.organic.current, 250);
-  assert.equal(result.trafficByChannel.organic.previous, 170);
-  assert.equal(result.trafficByChannel.direct.current, 30);
-  assert.equal(result.trafficByChannel.referral.current, null);
+  const result = getKpiAuthority(values, '2026-01', '2026-02');
+  assert.equal(result.trafficByChannel, undefined);
   assert.equal(result.domainAuthority.da.current, 45);
   assert.equal(result.domainAuthority.pa, null);
-  assert.ok(result.warnings.some((w) => w.includes('Referral')) || result.warnings.some((w) => w.includes('referral')));
   assert.ok(result.warnings.some((w) => w.toLowerCase().includes('page authority')));
+  assert.ok(!result.warnings.some((w) => w.toLowerCase().includes('organic')));
 });
 
-test('getKpiTrafficAndAuthority warns when no columns match the target month', () => {
+test('getKpiAuthority warns when no columns match the target month', () => {
   const values = [
     ['Metric', 'JAN'],
     ['', 'Week 1'],
-    ['Organic Traffic', '100'],
+    ['DA', '45'],
   ];
-  const result = getKpiTrafficAndAuthority(values, '2026-06', '2026-05');
+  const result = getKpiAuthority(values, '2026-06', '2026-05');
   assert.ok(result.warnings.some((w) => w.includes('2026-06')));
+});
+
+test('monthYearLabel formats "YYYY-MM" as "Month Year"', () => {
+  assert.equal(monthYearLabel('2026-06'), 'June 2026');
+  assert.equal(monthYearLabel('2026-01'), 'January 2026');
 });

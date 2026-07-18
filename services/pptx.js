@@ -212,7 +212,7 @@ const KEYWORD_BUCKETS = [
   ['Top 11-30', 'top11_30'],
   ['Top 31-50', 'top31_50'],
   ['Top 51-100', 'top51_100'],
-  ['Pending', 'pending'],
+  ['Pending (100+)', 'pending'],
 ];
 
 function buildSeoOverviewSlide(pptx, data) {
@@ -238,11 +238,17 @@ function buildSeoOverviewSlide(pptx, data) {
 
   const summaryParts = [];
   if (keywordRankings.hasData) {
-    summaryParts.push(
-      `Keywords ranking in the Top 10 ${trend(keywordRankings.changes.top10)} from ${
-        keywordRankings.previous.top10
-      } to ${keywordRankings.current.top10} versus ${prevLabel}.`
-    );
+    if (keywordRankings.previous !== null) {
+      summaryParts.push(
+        `Keywords ranking in the Top 10 ${trend(keywordRankings.changes.top10)} from ${
+          keywordRankings.previous.top10
+        } to ${keywordRankings.current.top10} versus ${prevLabel}.`
+      );
+    } else {
+      summaryParts.push(
+        `Keywords ranking in the Top 10 stood at ${keywordRankings.current.top10} for ${currLabel}. No keyword ranking data was available for ${prevLabel}.`
+      );
+    }
   } else {
     summaryParts.push('Keyword ranking data was not available for this period.');
   }
@@ -259,10 +265,13 @@ function buildSeoOverviewSlide(pptx, data) {
 
   const leftRows = [['Bucket', prevLabel, currLabel, '% Change']];
   if (keywordRankings.hasData) {
+    // `current` is guaranteed non-null when hasData is true; `previous` can
+    // still be null on its own (e.g. the comparison period predates the
+    // sheet's tracking), in which case it renders as "No data", not "0".
     KEYWORD_BUCKETS.forEach(([label, key]) => {
       leftRows.push([
         label,
-        fmtNum(keywordRankings.previous[key]),
+        keywordRankings.previous === null ? 'No data' : fmtNum(keywordRankings.previous[key]),
         fmtNum(keywordRankings.current[key]),
         pctCell(keywordRankings.changes[key]),
       ]);

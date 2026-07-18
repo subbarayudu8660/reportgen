@@ -135,6 +135,8 @@ router.post('/generate-report', async (req, res) => {
           seoData.keywordRankings.error ||
             `No keyword ranking data found for ${currentLabel} in the SEO tracker. The sheet may not have a date column within this month.`
         );
+      } else if (seoData.keywordRankings.comparisonError) {
+        warnings.push(seoData.keywordRankings.comparisonError);
       }
       if (!seoData.offPage.hasData) {
         warnings.push(seoData.offPage.error || `No off-page submission data found for ${currentLabel}.`);

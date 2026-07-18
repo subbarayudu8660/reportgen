@@ -60,6 +60,13 @@ function monthNameToNumber(raw) {
   return idx === -1 ? null : idx + 1;
 }
 
+// "2026-06" -> "June 2026", for human-readable warnings.
+function monthYearLabel(monthStr) {
+  const [year, month] = monthStr.split('-').map(Number);
+  const name = MONTH_NAMES[month - 1];
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${year}`;
+}
+
 function makeDate(year, month, day) {
   if (!year || !month || !day) return null;
   if (month < 1 || month > 12) return null;
@@ -396,10 +403,11 @@ async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email,
 
   if (values.length === 0) {
     return {
-      current: emptyBuckets(),
-      previous: emptyBuckets(),
+      current: null,
+      previous: null,
       hasData: false,
       error: `The "${tabName}" tab is empty.`,
+      comparisonError: null,
     };
   }
 
@@ -407,10 +415,11 @@ async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email,
   if (headerRowIdx === -1) {
     const foundLabels = collectColumnALabels(values).slice(0, 20);
     return {
-      current: emptyBuckets(),
-      previous: emptyBuckets(),
+      current: null,
+      previous: null,
       hasData: false,
       error: `Could not find a "Keyword" header row in the "${tabName}" tab. Detected labels in column A: [${foundLabels.join(', ')}].`,
+      comparisonError: null,
     };
   }
 
@@ -427,26 +436,56 @@ async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email,
   const currCol = latestColForMonth(dateCols, currentMonth);
   const prevCol = latestColForMonth(dateCols, comparisonMonth);
 
+  const foundDatesList = dateCols.map((dc) => `${dc.date.month}/${dc.date.day}/${dc.date.year}`);
+  function logColumnUsed(monthStr, colIdx) {
+    if (colIdx === null) return;
+    const dc = dateCols.find((d) => d.col === colIdx);
+    console.log(
+      `[sheets] Keyword rankings ("${tabName}"): using ${dc.date.month}/${dc.date.day}/${dc.date.year} (column ${dc.col}) as the representative snapshot for ${monthStr}.`
+    );
+  }
+  logColumnUsed(currentMonth, currCol);
+  logColumnUsed(comparisonMonth, prevCol);
+
+  // Returns null — not zeroed buckets — when this specific month has no
+  // matching date column, so "no data available" is never rendered the
+  // same way as a real zero-count result.
   function bucketsForCol(colIdx) {
+    if (colIdx === null || dataRows.length === 0) return null;
     const buckets = emptyBuckets();
-    if (colIdx === null) return buckets;
     dataRows.forEach((row) => {
       buckets[classifyRank(row[colIdx])]++;
     });
     return buckets;
   }
 
+  function missingDateError(monthStr) {
+    return dateCols.length > 0
+      ? `No keyword ranking data found for ${monthYearLabel(monthStr)} — nearest available dates in sheet: [${foundDatesList.join(', ')}].`
+      : `No date columns found in the "${tabName}" tab.`;
+  }
+
   let error = null;
   if (currCol === null) {
-    const foundDates = dateCols.map((dc) => `${dc.date.month}/${dc.date.day}/${dc.date.year}`);
-    error = `No date columns found for ${currentMonth} in the "${tabName}" tab. Found date columns: [${foundDates.join(', ')}].`;
+    error = missingDateError(currentMonth);
+  } else if (dataRows.length === 0) {
+    error = `The "${tabName}" tab has a header row but no keyword data rows beneath it.`;
   }
+
+  // Comparison-period-only gap: current period has data but the comparison
+  // period doesn't (e.g. the sheet's tracking doesn't go back that far).
+  // Reported independently of `error` so a real current-period result isn't
+  // hidden behind a message that's really about the comparison period.
+  const comparisonError = currCol !== null && dataRows.length > 0 && prevCol === null
+    ? missingDateError(comparisonMonth)
+    : null;
 
   return {
     current: bucketsForCol(currCol),
     previous: bucketsForCol(prevCol),
     hasData: currCol !== null && dataRows.length > 0,
     error,
+    comparisonError,
   };
 }
 
@@ -497,20 +536,14 @@ async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, ema
 }
 
 // ---------------------------------------------------------------------------
-// KPI tab: traffic-by-channel breakdown + DA/PA (Domain/Page Authority)
-// This is additive data not currently rendered in the deck, but resilient
-// scanning is implemented the same way so it's available without further
-// hardcoding once a slide/consumer wants it.
+// KPI tab: DA/PA (Domain/Page Authority) only.
+//
+// Organic/Direct/Referral/Social/Paid-Search traffic is intentionally NOT
+// pulled from this tab — GA4 (services/ga4.js) is already the source of
+// truth for channel traffic on the Traffic Overview slide, and duplicating
+// it from the sheet would just create a second, possibly-conflicting number
+// for the same metric.
 // ---------------------------------------------------------------------------
-
-const TRAFFIC_TYPE_VARIANTS = {
-  organic: ['organic traffic', 'organic search', 'organic'],
-  direct: ['direct traffic', 'direct'],
-  referral: ['referral traffic', 'referral'],
-  social: ['social traffic', 'organic social', 'social'],
-  paidSearch: ['paid search', 'paid traffic'],
-  unassigned: ['unassigned'],
-};
 
 // Row 1 (month labels) can have merged cells, which the Sheets values API
 // returns as blank for every column but the first in the merged range.
@@ -540,35 +573,21 @@ function findMonthColumns(monthHeaderRow, monthStr) {
   return cols;
 }
 
-function getKpiTrafficAndAuthority(values, currentMonth, comparisonMonth) {
+function getKpiAuthority(values, currentMonth, comparisonMonth) {
   const warnings = [];
   if (values.length < 2) {
-    return { trafficByChannel: null, domainAuthority: null, warnings: ['The KPI tab has no rows to read.'] };
+    return { domainAuthority: null, warnings: ['The KPI tab has no rows to read.'] };
   }
 
   const monthHeaderRow = values[0];
   const dataRows = values.slice(2); // row 1 = months, row 2 = "Week 1..4" sub-header
-  const labels = collectColumnALabels(dataRows);
 
   const currentCols = findMonthColumns(monthHeaderRow, currentMonth);
   const comparisonCols = findMonthColumns(monthHeaderRow, comparisonMonth);
 
   if (currentCols.length === 0) {
+    const labels = collectColumnALabels(dataRows);
     warnings.push(`No columns found for ${currentMonth} in the KPI tab's month header row. Detected labels: [${labels.slice(0, 20).join(', ')}].`);
-  }
-
-  function sumRowAcrossCols(row, cols) {
-    if (cols.length === 0) return null;
-    let total = 0;
-    let any = false;
-    cols.forEach((col) => {
-      const n = Number(row[col]);
-      if (Number.isFinite(n)) {
-        total += n;
-        any = true;
-      }
-    });
-    return any ? total : null;
   }
 
   function firstValueAcrossCols(row, cols) {
@@ -581,20 +600,6 @@ function getKpiTrafficAndAuthority(values, currentMonth, comparisonMonth) {
     }
     return null;
   }
-
-  const trafficByChannel = {};
-  Object.entries(TRAFFIC_TYPE_VARIANTS).forEach(([key, variants]) => {
-    const rowIdx = findRowByLabel(dataRows, 0, variants);
-    if (rowIdx === -1) {
-      trafficByChannel[key] = { current: null, previous: null };
-      warnings.push(`Could not find "${variants[0]}" row in the KPI tab. Detected labels in column A: [${labels.slice(0, 30).join(', ')}].`);
-      return;
-    }
-    trafficByChannel[key] = {
-      current: sumRowAcrossCols(dataRows[rowIdx], currentCols),
-      previous: sumRowAcrossCols(dataRows[rowIdx], comparisonCols),
-    };
-  });
 
   const daRowIdx = findRowByLabel(dataRows, 0, ['domain authority', 'da']);
   const paRowIdx = findRowByLabel(dataRows, 0, ['page authority', 'pa']);
@@ -612,7 +617,7 @@ function getKpiTrafficAndAuthority(values, currentMonth, comparisonMonth) {
   if (daRowIdx === -1) warnings.push(`Could not find a "Domain Authority"/"DA" row in the KPI tab.`);
   if (paRowIdx === -1) warnings.push(`Could not find a "Page Authority"/"PA" row in the KPI tab.`);
 
-  return { trafficByChannel, domainAuthority, warnings };
+  return { domainAuthority, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -629,36 +634,45 @@ async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
   const keywordRankingsPromise = keywordTab
     ? getKeywordRankings(currentMonth, comparisonMonth, sheetId, email, keywordTab)
     : Promise.resolve({
-        current: emptyBuckets(),
-        previous: emptyBuckets(),
+        current: null,
+        previous: null,
         hasData: false,
         error: tabNotFoundMessage('Keyword rankings', tabTitles),
+        comparisonError: null,
       });
 
   const offPagePromise = offPageTab
     ? getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, email, offPageTab)
     : Promise.resolve({ current: 0, previous: 0, hasData: false, error: tabNotFoundMessage('Off-page submissions', tabTitles) });
 
-  const kpiTrafficPromise = kpiTrafficTab
+  const kpiAuthorityPromise = kpiTrafficTab
     ? getSheetValues(`${quoteSheetName(kpiTrafficTab)}!A1:ZZ500`, sheetId, email).then((values) =>
-        getKpiTrafficAndAuthority(values, currentMonth, comparisonMonth)
+        getKpiAuthority(values, currentMonth, comparisonMonth)
       )
-    : Promise.resolve({ trafficByChannel: null, domainAuthority: null, warnings: [tabNotFoundMessage('KPI (traffic/authority)', tabTitles)] });
+    : Promise.resolve({ domainAuthority: null, warnings: [tabNotFoundMessage('KPI (DA/PA)', tabTitles)] });
 
   const [keywordRankings, offPage, kpiExtra] = await Promise.all([
     keywordRankingsPromise,
     offPagePromise,
-    kpiTrafficPromise,
+    kpiAuthorityPromise,
   ]);
 
   if (keywordRankings.error) warnings.push(keywordRankings.error);
+  if (keywordRankings.comparisonError) warnings.push(keywordRankings.comparisonError);
   if (offPage.error) warnings.push(offPage.error);
   if (kpiExtra.warnings) warnings.push(...kpiExtra.warnings);
 
+  // Bucket-by-bucket % change only makes sense when BOTH periods actually
+  // have data; `undefined` (not `pctChange`'s own `null` "New" sentinel)
+  // signals "not comparable at all" so `fmtPct()` renders "N/A" rather than
+  // "New" for a period that's genuinely missing, not just starting from zero.
   const bucketKeys = ['top10', 'top11_30', 'top31_50', 'top51_100', 'pending'];
   const changes = {};
   bucketKeys.forEach((key) => {
-    changes[key] = pctChange(keywordRankings.current[key], keywordRankings.previous[key]);
+    changes[key] =
+      keywordRankings.current === null || keywordRankings.previous === null
+        ? undefined
+        : pctChange(keywordRankings.current[key], keywordRankings.previous[key]);
   });
 
   return {
@@ -670,9 +684,6 @@ async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
       hasData: offPage.hasData,
       error: offPage.error,
     },
-    // Additive data, not currently rendered by pptx.js — available for a
-    // future slide without further sheet-parsing changes.
-    trafficByChannel: kpiExtra.trafficByChannel,
     domainAuthority: kpiExtra.domainAuthority,
     warnings,
   };
@@ -689,6 +700,7 @@ module.exports = {
     parseFlexibleDate,
     parseMonthLabel,
     monthNameToNumber,
+    monthYearLabel,
     classifyRank,
     TAB_VARIANTS,
     exactMatchTab,
@@ -706,6 +718,6 @@ module.exports = {
     forwardFillRow,
     findMonthColumns,
     findKeywordHeaderRowIndex,
-    getKpiTrafficAndAuthority,
+    getKpiAuthority,
   },
 };
