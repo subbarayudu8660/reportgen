@@ -63,7 +63,10 @@ function fmtSpend(spend) {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Fetches Meta Ads insights + active campaign count for one reporting month.
+// Fetches Meta Ads insights for one reporting month. `totalCampaigns` counts campaigns
+// with spend > 0 during the date range (i.e. actually ran in the period), not campaigns
+// whose *current* status happens to be ACTIVE — a campaign paused/archived after spending
+// money in the period still counts, and an enabled-but-unspent campaign does not.
 // Throws with `.code` of META_NOT_CONFIGURED, META_NO_ACCOUNT, META_TOKEN_EXPIRED,
 // or META_API_ERROR — callers should catch and skip the slide rather than fail the report.
 async function getMetaAdsData(adAccountId, monthStr) {
@@ -83,18 +86,22 @@ async function getMetaAdsData(adAccountId, monthStr) {
   const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
 
   const insightsUrl = `${META_BASE}/${adAccountId}/insights?time_range=${timeRange}&fields=campaign_name,impressions,clicks,spend,reach,actions&level=account`;
-  const campaignsUrl = `${META_BASE}/${adAccountId}/campaigns?fields=id,name,status`;
+  const campaignInsightsUrl = `${META_BASE}/${adAccountId}/insights?time_range=${timeRange}&fields=campaign_id,spend&level=campaign&limit=500`;
 
-  const [insightsBody, campaignsBody] = await Promise.all([
+  const [insightsBody, campaignInsightsBody] = await Promise.all([
     metaFetch(insightsUrl, accessToken),
-    metaFetch(campaignsUrl, accessToken),
+    metaFetch(campaignInsightsUrl, accessToken),
   ]);
 
   const insightsRow = (insightsBody.data && insightsBody.data[0]) || {};
-  const activeCampaigns = (campaignsBody.data || []).filter((c) => c.status === 'ACTIVE');
+  const spendingCampaignIds = new Set(
+    (campaignInsightsBody.data || [])
+      .filter((row) => (Number(row.spend) || 0) > 0)
+      .map((row) => row.campaign_id)
+  );
 
   return {
-    totalCampaigns: activeCampaigns.length,
+    totalCampaigns: spendingCampaignIds.size,
     totalSpend: fmtSpend(insightsRow.spend),
     impressions: insightsRow.impressions !== undefined ? Number(insightsRow.impressions) : null,
     clicks: insightsRow.clicks !== undefined ? Number(insightsRow.clicks) : null,

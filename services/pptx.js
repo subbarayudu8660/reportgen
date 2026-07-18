@@ -698,25 +698,35 @@ function googleAdsSummaryText(googleAds, monthStr) {
 }
 
 function buildMetaAdsTable(slide, metaAds, y) {
-  const header = ['Total Campaigns', 'Form Leads', 'Spend', 'Impressions', 'Clicks', 'Reach', 'Message Conv.'];
+  const header = ['Total Campaigns', 'Form Leads', 'Message Leads', 'Spend', 'Impressions', 'Clicks', 'Reach'];
   const numOrDash = (n) => (n === null || n === undefined ? null : fmtNum(n));
   const dataRow = [
     'Total',
     paidMediaCell(numOrDash(metaAds.totalCampaigns)),
     paidMediaCell(numOrDash(metaAds.formLeads)),
+    paidMediaCell(numOrDash(metaAds.messageConversations)),
     paidMediaCell(metaAds.totalSpend),
     paidMediaCell(numOrDash(metaAds.impressions)),
     paidMediaCell(numOrDash(metaAds.clicks)),
     paidMediaCell(numOrDash(metaAds.reach)),
-    paidMediaCell(numOrDash(metaAds.messageConversations)),
   ];
 
   const rows = [['', ...header], dataRow];
   if (metaAds.gstAmount) {
-    rows.push(['With GST', '', '', withGstText(metaAds.totalSpend, metaAds.gstAmount), '', '', '', '']);
+    rows.push(['With GST', '', '', '', withGstText(metaAds.totalSpend, metaAds.gstAmount), '', '', '']);
   }
 
-  addTable(slide, rows, [1.05, 1.15, 1.05, 1.4, 1.15, 1.0, 1.05, 1.15], { x: 0.5, y, w: 9 });
+  addTable(slide, rows, [1.05, 1.15, 1.15, 1.05, 1.4, 1.15, 1.0, 1.05], { x: 0.5, y, w: 9 });
+}
+
+function metaAdsSummaryText(metaAds, monthStr) {
+  return `Meta Ads delivered ${fmtNum(metaAds.impressions)} impressions and ${fmtNum(
+    metaAds.clicks
+  )} clicks in ${monthLabel(monthStr)}, with a total spend of ${metaAds.totalSpend} across ${
+    metaAds.totalCampaigns
+  } campaigns, generating ${fmtNum(metaAds.formLeads)} form leads and ${fmtNum(
+    metaAds.messageConversations
+  )} message leads.`;
 }
 
 function buildPaidMediaSlide(pptx, data) {
@@ -796,6 +806,17 @@ function buildPaidMediaSlide(pptx, data) {
   y += 0.45;
   if (hasMeta) {
     buildMetaAdsTable(slide, metaAds, y);
+    y += metaAds.gstAmount ? 1.15 : 0.85;
+    slide.addText(metaAdsSummaryText(metaAds, data.currentMonth), {
+      x: 0.5,
+      y,
+      w: 9,
+      h: 0.4,
+      fontSize: 10.5,
+      color: TEXT_DARK,
+      fontFace: 'Arial',
+      valign: 'top',
+    });
   } else {
     slide.addText('Not configured for this period', {
       x: 0.5,
