@@ -5,17 +5,22 @@ const { _internal } = require('./sheets');
 const {
   normalizeLabel,
   labelContainsAny,
+  matchesVariant,
+  isBlankCell,
   parseFlexibleDate,
   parseMonthLabel,
   classifyRank,
+  TAB_VARIANTS,
+  exactMatchTab,
   isKeywordTabName,
   isOffPageTabName,
   isKpiTrafficTabName,
   pickBestTab,
+  resolveTabs,
   findDateColumns,
   colsForMonth,
   latestColForMonth,
-  findLabelRow,
+  findRowByLabel,
   forwardFillRow,
   findMonthColumns,
   findKeywordHeaderRowIndex,
@@ -125,10 +130,71 @@ test('findDateColumns / colsForMonth / latestColForMonth pick the most recent sn
   assert.equal(latestColForMonth(dateCols, '2026-08'), null);
 });
 
-test('findLabelRow finds the first matching row and ignores others', () => {
+test('findRowByLabel finds the first matching row by column index and ignores others', () => {
   const rows = [['Direct'], ['Organic Traffic'], ['Organic Search']];
-  assert.equal(findLabelRow(rows, ['organic traffic', 'organic search', 'organic']), 1);
-  assert.equal(findLabelRow(rows, ['unassigned']), -1);
+  assert.equal(findRowByLabel(rows, 0, ['organic traffic', 'organic search', 'organic']), 1);
+  assert.equal(findRowByLabel(rows, 0, ['unassigned']), -1);
+});
+
+test('findRowByLabel matches against an arbitrary column index, not just column A', () => {
+  const rows = [['x', 'Direct'], ['y', 'Organic']];
+  assert.equal(findRowByLabel(rows, 1, ['organic']), 1);
+});
+
+test('matchesVariant requires an exact match for short acronyms so "DA"/"PA" do not false-positive', () => {
+  assert.equal(matchesVariant('DA', 'da'), true);
+  assert.equal(matchesVariant('Domain Authority', 'domain authority'), true);
+  assert.equal(matchesVariant('Data Studio Link', 'da'), false);
+  assert.equal(matchesVariant('Paid Search', 'pa'), false);
+  assert.equal(matchesVariant('PA', 'pa'), true);
+});
+
+test('isBlankCell treats stray punctuation-only cells as empty', () => {
+  assert.equal(isBlankCell(''), true);
+  assert.equal(isBlankCell(null), true);
+  assert.equal(isBlankCell("'"), true);
+  assert.equal(isBlankCell('`'), true);
+  assert.equal(isBlankCell('--'), true);
+  assert.equal(isBlankCell('  '), true);
+  assert.equal(isBlankCell('Organic'), false);
+  assert.equal(isBlankCell('0'), false);
+});
+
+test('exactMatchTab matches known tab-name variants as a fast path, case/apostrophe-insensitively', () => {
+  assert.equal(exactMatchTab(TAB_VARIANTS.keywords, ['Notes', 'Keyword Rankings', 'KPI']), 'Keyword Rankings');
+  assert.equal(exactMatchTab(TAB_VARIANTS.kpi, ['kpi’s', 'Other']), 'kpi’s');
+  assert.equal(exactMatchTab(TAB_VARIANTS.offpage, ['Random Tab']), null);
+});
+
+test('resolveTabs: fast path exact variant match wins when present', () => {
+  const { keywordTab, offPageTab, kpiTrafficTab } = resolveTabs([
+    'Keyword Ranking Report', "KPI's", 'KPI_2', 'Other Notes',
+  ]);
+  assert.equal(keywordTab, 'Keyword Ranking Report');
+  assert.equal(offPageTab, 'KPI_2');
+  assert.equal(kpiTrafficTab, "KPI's");
+});
+
+test('resolveTabs: falls back to dynamic substring scan for unfamiliar tab names (Dream Timbers-style sheet)', () => {
+  const { keywordTab, offPageTab, kpiTrafficTab } = resolveTabs([
+    'Overview', 'Keywords Master List', 'Monthly KPI Metrics', 'Off-Page SEO Log',
+  ]);
+  assert.equal(keywordTab, 'Keywords Master List');
+  assert.equal(offPageTab, 'Off-Page SEO Log');
+  assert.equal(kpiTrafficTab, 'Monthly KPI Metrics');
+});
+
+test('resolveTabs: off-page (KPI_2/KPI 2) never gets swallowed by the generic KPI-traffic fallback', () => {
+  const { offPageTab, kpiTrafficTab } = resolveTabs(['KPI 2', 'KPI']);
+  assert.equal(offPageTab, 'KPI 2');
+  assert.equal(kpiTrafficTab, 'KPI');
+});
+
+test('resolveTabs: warns implicitly by returning null when a whole category is missing', () => {
+  const { keywordTab, offPageTab, kpiTrafficTab } = resolveTabs(['Random Tab One', 'Random Tab Two']);
+  assert.equal(keywordTab, null);
+  assert.equal(offPageTab, null);
+  assert.equal(kpiTrafficTab, null);
 });
 
 test('forwardFillRow fills blanks left over from merged header cells', () => {
@@ -151,6 +217,34 @@ test('findKeywordHeaderRowIndex finds the header wherever it is, not a fixed row
 
 test('findKeywordHeaderRowIndex returns -1 when no keyword header exists', () => {
   assert.equal(findKeywordHeaderRowIndex([['Foo'], ['Bar']]), -1);
+});
+
+test('findKeywordHeaderRowIndex (Dream Timbers-style): header at row 12 works the same as row 10', () => {
+  // A decorative title row also mentions "keyword" but has no date columns
+  // beside it — the real header (with date columns) must win, even though
+  // it comes later in the sheet.
+  const values = [];
+  for (let i = 0; i < 10; i++) values.push(['', '']); // blank rows before the title
+  values.push(['Keyword Ranking Report', '']); // decorative title row (row idx 10)
+  values.push(['']); // blank spacer row
+  values.push(['Keyword', '6/1/2026', '7/1/2026']); // real header row (row idx 12)
+  values.push(['seo term', '5', '4']);
+  assert.equal(findKeywordHeaderRowIndex(values), 12);
+});
+
+test('findKeywordHeaderRowIndex: labels scattered at arbitrary/random row positions still resolve correctly', () => {
+  const values = [
+    ['Client Notes', 'internal use only'],
+    [],
+    ['', ''],
+    ['Not a header', '123'],
+    [],
+    ['Keyword', '6/1/2026', '6/8/2026'],
+    ['random term one', '12', '9'],
+    ['random term two', '55', '60'],
+  ];
+  const headerIdx = findKeywordHeaderRowIndex(values);
+  assert.equal(headerIdx, 5);
 });
 
 test('getKpiTrafficAndAuthority scans labels/columns dynamically and warns on missing rows', () => {

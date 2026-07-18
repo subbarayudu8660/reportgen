@@ -7,20 +7,38 @@ const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 // Label / text normalization
 // ---------------------------------------------------------------------------
 
-// Lowercases, trims, and normalizes curly apostrophes so labels like
-// "KPI's" / "KPI’s" / "kpi's" / "KPIs" all compare equal after stripping
-// punctuation differences the user might type into a sheet.
+// Lowercases, trims, and normalizes curly apostrophes/backticks so labels
+// like "KPI's" / "KPI’s" / "kpi`s" / "KPIs" all compare equal after
+// stripping punctuation differences the user might type into a sheet.
 function normalizeLabel(value) {
   return String(value === undefined || value === null ? '' : value)
     .trim()
     .toLowerCase()
-    .replace(/[‘’]/g, "'");
+    .replace(/[‘’`]/g, "'");
+}
+
+// Short acronym variants (e.g. "DA", "PA") require an exact match rather
+// than substring-contains — otherwise "DA" would false-positive against
+// "Data Studio Link" and "PA" against "Paid Search".
+function matchesVariant(label, variant) {
+  const normLabel = normalizeLabel(label);
+  const normVariant = normalizeLabel(variant);
+  if (!normLabel || !normVariant) return false;
+  if (normVariant.length <= 3) return normLabel === normVariant;
+  return normLabel.includes(normVariant);
 }
 
 function labelContainsAny(value, variants) {
+  return variants.some((v) => matchesVariant(value, v));
+}
+
+// A cell containing only punctuation/whitespace (a stray apostrophe, a
+// lone dash, backticks left over from a copy-paste) reads as "blank" for
+// the purposes of finding the end of a data range or a real label.
+function isBlankCell(value) {
   const norm = normalizeLabel(value);
-  if (!norm) return false;
-  return variants.some((v) => norm.includes(v));
+  if (norm === '') return true;
+  return norm.replace(/[^a-z0-9]/g, '') === '';
 }
 
 // ---------------------------------------------------------------------------
@@ -208,10 +226,31 @@ async function getSheetTabTitles(sheetId, email) {
 }
 
 // ---------------------------------------------------------------------------
-// Tab resolution — tabs are found by what their name *contains*, not an
-// exact/candidate-list match, so any reasonably-named client sheet works
-// without code changes.
+// Tab resolution.
+//
+// Fast path: an exact (case/whitespace/apostrophe-insensitive) match against
+// a short list of tab names we've actually seen in client sheets. This is
+// just a shortcut for the common case — it is NOT the source of truth.
+//
+// Fallback: if no variant matches exactly, dynamically scan every tab title
+// for the relevant substring, so a sheet named something we've never seen
+// still resolves correctly without a code change.
 // ---------------------------------------------------------------------------
+
+const TAB_VARIANTS = {
+  keywords: ['Keyword Ranking Report', 'Keywords Ranking Report', 'Keyword Rankings'],
+  kpi: ["KPI's", 'KPIs', 'KPI', 'Monthly KPIs'],
+  offpage: ['KPI_2', 'KPI 2', 'Off-page SEO Submission Tracker'],
+};
+
+function exactMatchTab(variants, availableTitles) {
+  const byNormalized = new Map(availableTitles.map((title) => [normalizeLabel(title), title]));
+  for (const variant of variants) {
+    const match = byNormalized.get(normalizeLabel(variant));
+    if (match) return match;
+  }
+  return null;
+}
 
 function isKeywordTabName(name) {
   return normalizeLabel(name).includes('keyword');
@@ -236,10 +275,21 @@ function pickBestTab(matchingNames) {
   return (fresh.length ? fresh : matchingNames)[0];
 }
 
+function resolveTab(exactVariants, dynamicPredicate, availableTitles) {
+  return (
+    exactMatchTab(exactVariants, availableTitles) ||
+    pickBestTab(availableTitles.filter(dynamicPredicate))
+  );
+}
+
 function resolveTabs(availableTitles) {
-  const keywordTab = pickBestTab(availableTitles.filter(isKeywordTabName));
-  const offPageTab = pickBestTab(availableTitles.filter(isOffPageTabName));
-  const kpiTrafficTab = pickBestTab(availableTitles.filter(isKpiTrafficTabName));
+  // Off-page is resolved before the generic KPI tab so that a sheet with
+  // both "KPI_2" and "KPI" tabs never lets the KPI-traffic fallback (which
+  // only excludes tabs it itself classifies as off-page) accidentally
+  // swallow the off-page tab first.
+  const offPageTab = resolveTab(TAB_VARIANTS.offpage, isOffPageTabName, availableTitles);
+  const keywordTab = resolveTab(TAB_VARIANTS.keywords, isKeywordTabName, availableTitles);
+  const kpiTrafficTab = resolveTab(TAB_VARIANTS.kpi, isKpiTrafficTabName, availableTitles);
   return { keywordTab, offPageTab, kpiTrafficTab };
 }
 
@@ -276,19 +326,19 @@ function latestColForMonth(dateCols, monthStr) {
   return matches[matches.length - 1].col;
 }
 
-// Finds the row index (within `rows`) whose first column matches one of the
-// given label variants. Returns -1 if not found.
-function findLabelRow(rows, variants) {
-  for (let i = 0; i < rows.length; i++) {
-    if (labelContainsAny(rows[i][0], variants)) return i;
-  }
-  return -1;
+// Finds the first row index (within `rows`) whose `columnIndex` cell matches
+// one of the given label variants — the universal label matcher used
+// everywhere a "which row is X in" question needs answering. Never assumes
+// a fixed row number; if a label appears more than once, the first match
+// wins. Returns -1 if not found.
+function findRowByLabel(rows, columnIndex, variants) {
+  return rows.findIndex((row) => labelContainsAny(row[columnIndex], variants));
 }
 
 function collectColumnALabels(rows) {
   return rows
     .map((r) => (r[0] === undefined || r[0] === null ? '' : String(r[0]).trim()))
-    .filter((label) => label !== '');
+    .filter((label) => label !== '' && !isBlankCell(label));
 }
 
 // ---------------------------------------------------------------------------
@@ -312,13 +362,31 @@ function classifyRank(raw) {
   return 'pending';
 }
 
-// Finds the header row anywhere in the tab: the first row whose column A
+// Finds the header row anywhere in the tab — any row whose column A
 // contains "keyword" (not assumed to be a fixed row number like 10 or 11).
+// A decorative title row ("Keyword Ranking Report") can also contain the
+// word "keyword" above the real header, so when several rows match, the
+// real header is picked as whichever candidate has the most parseable date
+// columns beside it; ties go to the lowest (later) row, since a title row
+// always sits above its header, never below it.
 function findKeywordHeaderRowIndex(values) {
+  const candidates = [];
   for (let i = 0; i < values.length; i++) {
-    if (labelContainsAny(values[i][0], ['keyword'])) return i;
+    if (labelContainsAny(values[i][0], ['keyword'])) candidates.push(i);
   }
-  return -1;
+  if (candidates.length === 0) return -1;
+  if (candidates.length === 1) return candidates[0];
+
+  let best = candidates[0];
+  let bestDateCount = -1;
+  candidates.forEach((idx) => {
+    const dateCount = findDateColumns(values[idx], 1).length;
+    if (dateCount >= bestDateCount) {
+      bestDateCount = dateCount;
+      best = idx;
+    }
+  });
+  return best;
 }
 
 async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email, tabName) {
@@ -351,7 +419,7 @@ async function getKeywordRankings(currentMonth, comparisonMonth, sheetId, email,
   // with an empty column A.
   const dataRows = [];
   for (let i = headerRowIdx + 1; i < values.length; i++) {
-    if (!values[i][0] || String(values[i][0]).trim() === '') break;
+    if (isBlankCell(values[i][0])) break;
     dataRows.push(values[i]);
   }
 
@@ -396,7 +464,7 @@ async function getOffPageSubmissions(currentMonth, comparisonMonth, sheetId, ema
   }
 
   const [headerRow, ...activityRows] = values;
-  const rows = activityRows.filter((r) => r[0] && String(r[0]).trim() !== '');
+  const rows = activityRows.filter((r) => !isBlankCell(r[0]));
   const dateCols = findDateColumns(headerRow, 1);
 
   function sumForMonth(m) {
@@ -516,7 +584,7 @@ function getKpiTrafficAndAuthority(values, currentMonth, comparisonMonth) {
 
   const trafficByChannel = {};
   Object.entries(TRAFFIC_TYPE_VARIANTS).forEach(([key, variants]) => {
-    const rowIdx = findLabelRow(dataRows, variants);
+    const rowIdx = findRowByLabel(dataRows, 0, variants);
     if (rowIdx === -1) {
       trafficByChannel[key] = { current: null, previous: null };
       warnings.push(`Could not find "${variants[0]}" row in the KPI tab. Detected labels in column A: [${labels.slice(0, 30).join(', ')}].`);
@@ -528,8 +596,8 @@ function getKpiTrafficAndAuthority(values, currentMonth, comparisonMonth) {
     };
   });
 
-  const daRowIdx = findLabelRow(dataRows, ['domain authority', 'da']);
-  const paRowIdx = findLabelRow(dataRows, ['page authority', 'pa']);
+  const daRowIdx = findRowByLabel(dataRows, 0, ['domain authority', 'da']);
+  const paRowIdx = findRowByLabel(dataRows, 0, ['page authority', 'pa']);
 
   const domainAuthority = {
     da: daRowIdx === -1 ? null : {
@@ -612,23 +680,29 @@ async function getSeoOverview(currentMonth, comparisonMonth, sheetId, email) {
 
 module.exports = {
   getSeoOverview,
-  // Exported for unit testing.
+  // Exported for unit testing only — not meant to be imported by application code.
   _internal: {
     normalizeLabel,
     labelContainsAny,
+    matchesVariant,
+    isBlankCell,
     parseFlexibleDate,
     parseMonthLabel,
     monthNameToNumber,
     classifyRank,
+    TAB_VARIANTS,
+    exactMatchTab,
     isKeywordTabName,
     isOffPageTabName,
     isKpiTrafficTabName,
     pickBestTab,
+    resolveTab,
     resolveTabs,
     findDateColumns,
     colsForMonth,
     latestColForMonth,
-    findLabelRow,
+    findRowByLabel,
+    collectColumnALabels,
     forwardFillRow,
     findMonthColumns,
     findKeywordHeaderRowIndex,
