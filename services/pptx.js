@@ -115,7 +115,7 @@ function addFooter(slide, monthStr, clientName) {
 }
 
 function addTable(slide, rows, colWidths, opts = {}) {
-  const { x = 0.5, y = 2.25, w = 9 } = opts;
+  const { x = 0.5, y = 2.25, w = 9, rowH, headerFontSize = 12, bodyFontSize = 11.5 } = opts;
   const tableRows = rows.map((row, rowIdx) => {
     const isHeader = rowIdx === 0;
     const isAltRow = !isHeader && (rowIdx - 1) % 2 === 1;
@@ -131,7 +131,7 @@ function addTable(slide, rows, colWidths, opts = {}) {
           color,
           fill: { color: isHeader ? ACCENT : isAltRow ? ROW_ALT : WHITE },
           bold: isHeader || isSpecial,
-          fontSize: isHeader ? 12 : 11.5,
+          fontSize: isHeader ? headerFontSize : bodyFontSize,
           fontFace: 'Arial',
           align: 'left',
           valign: 'middle',
@@ -145,9 +145,29 @@ function addTable(slide, rows, colWidths, opts = {}) {
     y,
     w,
     colW: colWidths,
+    ...(rowH ? { rowH } : {}),
     border: { type: 'solid', color: ROW_ALT, pt: 1 },
     autoPage: false,
   });
+}
+
+// Picks a row height (and matching font sizes) for a table with `numRows`
+// (header + data) rows so it fits within `availableH` inches without
+// overlapping the footer. Prefers the ideal row height; falls back to a
+// smaller fixed row height, then finally shrinks both row height and font
+// size together so a full 10-row landing-pages table never overflows.
+function fitTableRows(numRows, availableH) {
+  const IDEAL_ROW_H = 0.34;
+  const REDUCED_ROW_H = 0.28;
+
+  if (numRows * IDEAL_ROW_H <= availableH) {
+    return { rowH: IDEAL_ROW_H, headerFontSize: 12, bodyFontSize: 11.5 };
+  }
+  if (numRows * REDUCED_ROW_H <= availableH) {
+    return { rowH: REDUCED_ROW_H, headerFontSize: 12, bodyFontSize: 11.5 };
+  }
+  const rowH = Math.max(0.22, availableH / numRows);
+  return { rowH, headerFontSize: 10.5, bodyFontSize: 9.5 };
 }
 
 function buildTrafficOverviewSlide(pptx, data) {
@@ -535,8 +555,12 @@ function buildLandingPagesSlide(pptx, data) {
 
   addSummary(slide, summary);
 
+  // Cap defensively at 10 rows — `getTopLandingPages` already limits the GA4
+  // query to 10 pages, but the slide shouldn't rely solely on the upstream cap.
+  const topPages = pages.slice(0, 10);
+
   const rows = [['Page Path', 'Sessions', 'Prev. Sessions', 'Engaged Sessions', '% Change']];
-  pages.forEach((p) => {
+  topPages.forEach((p) => {
     rows.push([
       displayPagePath(p.pagePath),
       fmtNum(p.sessions),
@@ -548,16 +572,52 @@ function buildLandingPagesSlide(pptx, data) {
 
   // Table takes ~65% of the content width; the remaining ~30% (with a small
   // gap) holds three stacked hero stat cards.
-  addTable(slide, rows, [2.3, 1.0, 1.05, 1.05, 0.8], { x: 0.5, y: 2.25, w: 6.2 });
+  const tableX = 0.5;
+  const tableY = 2.25;
+  const tableW = 6.2;
+  const FOOTER_Y = 5.35;
+  const MIN_FOOTER_GAP = 0.3;
+
+  const numTableRows = rows.length; // header + data rows
+  const availableH = FOOTER_Y - MIN_FOOTER_GAP - tableY;
+  const { rowH, headerFontSize, bodyFontSize } = fitTableRows(numTableRows, availableH);
+  const tableH = numTableRows * rowH;
+
+  addTable(slide, rows, [2.3, 1.0, 1.05, 1.05, 0.8], {
+    x: tableX,
+    y: tableY,
+    w: tableW,
+    rowH,
+    headerFontSize,
+    bodyFontSize,
+  });
 
   const cardX = 7.0;
   const cardW = 2.5;
-  const cardH = 0.85;
-  const cardGap = 0.15;
+  let cardH = 0.85;
+  let cardGap = 0.15;
+  let cardsTotalH = 3 * cardH + 2 * cardGap;
+
+  // Shrink the cards (keeping their proportions) if the full stack wouldn't
+  // fit in the space above the footer — mirrors the table's own fallback.
+  if (cardsTotalH > availableH) {
+    const scale = availableH / cardsTotalH;
+    cardH *= scale;
+    cardGap *= scale;
+    cardsTotalH = availableH;
+  }
+
+  // Vertically center the stat card column on the table rather than pinning
+  // both to the same top edge, so a shorter/taller table stays balanced.
+  const tableCenterY = tableY + tableH / 2;
+  const cardsStartY = Math.min(
+    Math.max(tableY, tableCenterY - cardsTotalH / 2),
+    FOOTER_Y - MIN_FOOTER_GAP - cardsTotalH
+  );
 
   addStatCard(slide, {
     x: cardX,
-    y: 2.25,
+    y: cardsStartY,
     w: cardW,
     h: cardH,
     valueRuns: [{ text: fmtNum(screenPageViews), options: { fontSize: 26, bold: true, color: ACCENT } }],
@@ -566,7 +626,7 @@ function buildLandingPagesSlide(pptx, data) {
 
   addStatCard(slide, {
     x: cardX,
-    y: 2.25 + cardH + cardGap,
+    y: cardsStartY + cardH + cardGap,
     w: cardW,
     h: cardH,
     valueRuns: [{ text: fmtNum(activeUsers), options: { fontSize: 26, bold: true, color: ACCENT } }],
@@ -576,7 +636,7 @@ function buildLandingPagesSlide(pptx, data) {
   const pagesPerUserText = pagesPerUser === null ? 'N/A' : pagesPerUser.toFixed(2);
   addStatCard(slide, {
     x: cardX,
-    y: 2.25 + 2 * (cardH + cardGap),
+    y: cardsStartY + 2 * (cardH + cardGap),
     w: cardW,
     h: cardH,
     valueRuns: [
