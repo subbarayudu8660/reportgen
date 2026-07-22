@@ -1,4 +1,5 @@
 const PptxGenJS = require('pptxgenjs');
+const { pctChange } = require('./utils');
 
 const BG = 'F8F9FA';
 const WHITE = 'FFFFFF';
@@ -313,6 +314,83 @@ function buildSeoOverviewSlide(pptx, data) {
     rightRows.push(['Off-Page Submissions', 'Not configured', 'Not configured', 'Not configured']);
   }
   addTable(slide, rightRows, [1.8, 1.1, 1.1, 1.2], { x: 5.7, y: 2.25, w: 4 });
+
+  addFooter(slide, data.currentMonth, data.clientName);
+
+  return slide;
+}
+
+const SUPABASE_KEYWORD_BUCKETS = [
+  ['Top 10', 'top10'],
+  ['Top 11-30', 'top11to30'],
+  ['Top 31-50', 'top31to50'],
+  ['Top 51-100', 'top51to100'],
+  ['Pending', 'pending'],
+];
+
+function fmtScanCaption(scan) {
+  if (!scan) return 'No scan data available';
+  const date = new Date(scan.scanDate).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  return `${date} (${scan.country})`;
+}
+
+// Additive "Keyword Rankings (Supabase)" slide — only built when the client has
+// a websiteUrl configured and Supabase data was successfully fetched. This is a
+// separate, independent data source from the Sheets-based SEO Performance
+// slide and does not replace or modify it.
+function buildSupabaseKeywordsSlide(pptx, data) {
+  const supa = data.supabaseKeywords;
+  if (!supa) return null;
+
+  const slide = pptx.addSlide();
+  addSlideChrome(slide, 'Keyword Rankings — Live Tracking');
+
+  slide.addText('Source: Supabase live ranking database', {
+    x: 0.5,
+    y: 1.12,
+    w: 9,
+    h: 0.35,
+    fontSize: 13,
+    bold: true,
+    color: ACCENT,
+    fontFace: 'Arial',
+  });
+
+  const currLabel = monthLabel(data.currentMonth);
+  const prevLabel = monthLabel(data.comparisonMonth);
+
+  const rows = [['Bucket', currLabel, prevLabel, '% Change']];
+  SUPABASE_KEYWORD_BUCKETS.forEach(([label, key]) => {
+    const currVal = supa.current ? supa.current[key] : null;
+    const prevVal = supa.comparison ? supa.comparison[key] : null;
+    const change = currVal !== null && prevVal !== null ? pctChange(currVal, prevVal) : undefined;
+    rows.push([
+      label,
+      currVal === null ? 'No scan data available' : fmtNum(currVal),
+      prevVal === null ? 'No scan data available' : fmtNum(prevVal),
+      pctCell(change),
+    ]);
+  });
+
+  addTable(slide, rows, [1.8, 2.3, 2.3, 1.4], { x: 0.5, y: 1.65, w: 8 });
+
+  slide.addText(
+    `Based on scans from ${fmtScanCaption(supa.currentScan)} and ${fmtScanCaption(supa.comparisonScan)}`,
+    {
+      x: 0.5,
+      y: 4.35,
+      w: 8.5,
+      h: 0.4,
+      fontSize: 10.5,
+      italic: true,
+      color: NEUTRAL,
+      fontFace: 'Arial',
+    }
+  );
 
   addFooter(slide, data.currentMonth, data.clientName);
 
@@ -919,6 +997,7 @@ async function generateReportPptx(data) {
 
   buildTrafficOverviewSlide(pptx, data);
   buildSeoOverviewSlide(pptx, data);
+  buildSupabaseKeywordsSlide(pptx, data);
   buildOrganicSearchSlide(pptx, data);
   buildEcommerceSlide(pptx, data);
   buildLandingPagesSlide(pptx, data);

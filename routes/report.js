@@ -3,6 +3,7 @@ const { getFullReportData, mapGa4Error } = require('../services/ga4');
 const { getSeoOverview } = require('../services/sheets');
 const { getMetaAdsData } = require('../services/meta');
 const { getGoogleAdsData } = require('../services/googleAds');
+const { getKeywordRankings } = require('../services/supabase');
 const { generateReportPptx, monthLabel } = require('../services/pptx');
 const { getClientById } = require('../services/clients');
 
@@ -105,6 +106,30 @@ router.post('/generate-report', async (req, res) => {
       }
     }
 
+    // Supabase keyword rankings are fetched separately and never fail the whole
+    // report — this powers an additive "Keyword Rankings (Supabase)" slide only,
+    // not a replacement for the Sheets-based SEO Performance slide. Skipped
+    // entirely (no new slide) when the client has no websiteUrl configured.
+    let supabaseKeywordData = null;
+    let supabaseWarning = null;
+    if (client.websiteUrl) {
+      try {
+        supabaseKeywordData = await getKeywordRankings(client.websiteUrl, currentMonth, comparisonMonth);
+      } catch (supabaseErr) {
+        console.error('Supabase API error:', supabaseErr.code, supabaseErr.message);
+        if (supabaseErr.code === 'SUPABASE_NOT_CONFIGURED') {
+          supabaseWarning =
+            'Supabase keyword tracking is not configured on the server (missing SUPABASE_URL/SUPABASE_SERVICE_KEY).';
+        } else if (supabaseErr.code === 'SUPABASE_NO_SCANS') {
+          supabaseWarning = `Supabase keyword data could not be fetched: ${supabaseErr.message}`;
+        } else if (supabaseErr.code === 'SUPABASE_TIMEOUT') {
+          supabaseWarning = 'Supabase keyword data could not be fetched: the query timed out.';
+        } else {
+          supabaseWarning = `Supabase keyword data could not be fetched: ${supabaseErr.message}`;
+        }
+      }
+    }
+
     // When a Meta Ad Account ID is configured, API data replaces the manual Meta
     // Ads form fields on the Paid Media slide; manual entry is only a fallback
     // for clients with no ad account configured. Google Ads works the same way,
@@ -115,7 +140,13 @@ router.post('/generate-report', async (req, res) => {
       metaAds: client.metaAdAccountId ? metaAdsData : paidMedia && paidMedia.metaAds,
     };
 
-    const data = { ...gaData, seo: seoData, clientName: client.name, paidMedia: effectivePaidMedia };
+    const data = {
+      ...gaData,
+      seo: seoData,
+      clientName: client.name,
+      paidMedia: effectivePaidMedia,
+      supabaseKeywords: supabaseKeywordData,
+    };
     const buffer = await generateReportPptx(data);
 
     const currentLabel = monthLabel(currentMonth);
@@ -150,6 +181,11 @@ router.post('/generate-report', async (req, res) => {
     }
     if (googleAdsWarning) {
       warnings.push(googleAdsWarning);
+    }
+    if (supabaseWarning) {
+      warnings.push(supabaseWarning);
+    } else if (supabaseKeywordData) {
+      supabaseKeywordData.warnings.forEach((w) => warnings.push(w));
     }
 
     const filename = `WebrocketAI-Report-${currentLabel.replace(' ', '-')}-vs-${comparisonLabel.replace(' ', '-')}.pptx`;

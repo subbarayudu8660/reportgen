@@ -66,7 +66,7 @@ function getClientById(id) {
   return getClients().find((c) => c.id === id) || null;
 }
 
-function addClient({ name, ga4PropertyId, sheetId, metaAdAccountId, googleAdsCustomerId }) {
+function addClient({ name, ga4PropertyId, sheetId, metaAdAccountId, googleAdsCustomerId, websiteUrl }) {
   const clients = loadClients();
   const client = {
     id: crypto.randomUUID(),
@@ -75,6 +75,7 @@ function addClient({ name, ga4PropertyId, sheetId, metaAdAccountId, googleAdsCus
     sheetId: sheetId || '',
     metaAdAccountId: normalizeMetaAdAccountId(metaAdAccountId),
     googleAdsCustomerId: normalizeGoogleAdsCustomerId(googleAdsCustomerId),
+    websiteUrl: (websiteUrl || '').trim(),
     createdAt: new Date().toISOString(),
   };
   clients.push(client);
