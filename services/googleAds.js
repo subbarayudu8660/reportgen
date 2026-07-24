@@ -8,6 +8,44 @@ function fmtCurrency(n) {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// ListAccessibleCustomers reflects which accounts the signed-in user has
+// DIRECT access to (i.e. no manager-account relationship needed). It rarely
+// changes, so it's cached per signed-in email rather than re-fetched on every
+// report — this is an in-memory, per-process cache (not a database), which is
+// fine since it's just an optimization: a stale/missing entry just falls back
+// to re-fetching.
+const ACCESSIBLE_CUSTOMERS_TTL_MS = 60 * 60 * 1000; // 1 hour
+const accessibleCustomersCache = new Map(); // email -> { ids: Set<string>, fetchedAt: number }
+
+async function fetchAccessibleCustomerIds(accessToken, developerToken) {
+  const res = await fetch(`${GOOGLE_ADS_API_BASE}/customers:listAccessibleCustomers`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'developer-token': developerToken,
+    },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error((body.error && body.error.message) || `listAccessibleCustomers failed (${res.status})`);
+    err.code = 'GOOGLE_ADS_API_ERROR';
+    err.status = res.status;
+    throw err;
+  }
+  const resourceNames = Array.isArray(body.resourceNames) ? body.resourceNames : [];
+  return new Set(resourceNames.map((name) => name.replace(/^customers\//, '')));
+}
+
+async function getAccessibleCustomerIds(email, accessToken, developerToken) {
+  const cached = accessibleCustomersCache.get(email);
+  if (cached && Date.now() - cached.fetchedAt < ACCESSIBLE_CUSTOMERS_TTL_MS) {
+    return cached.ids;
+  }
+  const ids = await fetchAccessibleCustomerIds(accessToken, developerToken);
+  accessibleCustomersCache.set(email, { ids, fetchedAt: Date.now() });
+  return ids;
+}
+
 // Same pattern as services/sheets.js#ensureSheetsScope — tokens saved before
 // the adwords scope was added won't have it, so this must be checked
 // explicitly rather than assumed present just because the user is signed in.
@@ -48,27 +86,45 @@ async function getGoogleAdsData(googleAdsCustomerId, monthStr, email) {
     WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
   `.trim();
 
-  let res;
+  // Google's docs: login-customer-id must be omitted (or equal to the target
+  // customer ID) when the signed-in user has DIRECT access to that account,
+  // and is only required when accessing it THROUGH a manager (MCC) account.
+  // Sending it unconditionally breaks direct-access accounts that aren't
+  // linked to the configured MCC, so pick the header based on
+  // ListAccessibleCustomers rather than always sending it.
+  let hasDirectAccess = false;
   try {
-    res = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${googleAdsCustomerId}/googleAds:search`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken.token}`,
-        'developer-token': GOOGLE_ADS_DEVELOPER_TOKEN,
-        'login-customer-id': GOOGLE_ADS_LOGIN_CUSTOMER_ID,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query }),
-    });
-  } catch (networkErr) {
-    const err = new Error(`Could not reach the Google Ads API: ${networkErr.message}`);
-    err.code = 'GOOGLE_ADS_API_ERROR';
-    throw err;
+    const accessibleIds = await getAccessibleCustomerIds(email, accessToken.token, GOOGLE_ADS_DEVELOPER_TOKEN);
+    hasDirectAccess = accessibleIds.has(googleAdsCustomerId);
+  } catch (listErr) {
+    console.error('Google Ads listAccessibleCustomers error:', listErr.code, listErr.message);
+    // Can't determine direct access — fall through and try the MCC path first.
   }
 
-  const body = await res.json().catch(() => ({}));
+  async function runSearch(loginCustomerId) {
+    const headers = {
+      Authorization: `Bearer ${accessToken.token}`,
+      'developer-token': GOOGLE_ADS_DEVELOPER_TOKEN,
+      'Content-Type': 'application/json',
+    };
+    if (loginCustomerId) headers['login-customer-id'] = loginCustomerId;
 
-  if (!res.ok) {
+    let res;
+    try {
+      res = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${googleAdsCustomerId}/googleAds:search`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query }),
+      });
+    } catch (networkErr) {
+      const err = new Error(`Could not reach the Google Ads API: ${networkErr.message}`);
+      err.code = 'GOOGLE_ADS_API_ERROR';
+      throw err;
+    }
+
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) return body;
+
     const apiError = body.error || {};
     const details = Array.isArray(apiError.details) ? apiError.details : [];
     const errorCode = details.reduce((acc, d) => acc || (d.errors && d.errors[0] && d.errors[0].errorCode), null);
@@ -80,6 +136,7 @@ async function getGoogleAdsData(googleAdsCustomerId, monthStr, email) {
       message: apiError.message,
       status: apiError.status,
       details: apiError.details,
+      loginCustomerIdSent: loginCustomerId || null,
     }, null, 2));
 
     if (errorCodeKeys.includes('developerTokenError') || errorCodeKeys.includes('authenticationError')) {
@@ -101,6 +158,18 @@ async function getGoogleAdsData(googleAdsCustomerId, monthStr, email) {
     err.code = 'GOOGLE_ADS_API_ERROR';
     err.status = res.status;
     throw err;
+  }
+
+  const primaryLoginCustomerId = hasDirectAccess ? null : GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+  const fallbackLoginCustomerId = hasDirectAccess ? GOOGLE_ADS_LOGIN_CUSTOMER_ID : null;
+
+  let body;
+  try {
+    body = await runSearch(primaryLoginCustomerId);
+  } catch (primaryErr) {
+    if (primaryErr.code !== 'GOOGLE_ADS_PERMISSION_DENIED') throw primaryErr;
+    // Wrong access path assumed — retry the other way before giving up.
+    body = await runSearch(fallbackLoginCustomerId);
   }
 
   const rows = body.results || [];
