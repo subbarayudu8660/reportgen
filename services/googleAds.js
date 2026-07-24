@@ -62,6 +62,14 @@ async function getGoogleAdsData(googleAdsCustomerId, monthStr, email) {
     const errorCode = details.reduce((acc, d) => acc || (d.errors && d.errors[0] && d.errors[0].errorCode), null);
     const errorCodeKeys = errorCode ? Object.keys(errorCode) : [];
 
+    console.error('Google Ads API error response:', JSON.stringify({
+      httpStatus: res.status,
+      errorCode: apiError.code,
+      message: apiError.message,
+      status: apiError.status,
+      details: apiError.details,
+    }, null, 2));
+
     if (errorCodeKeys.includes('developerTokenError') || errorCodeKeys.includes('authenticationError')) {
       const err = new Error(
         'Google Ads developer token is pending Basic Access approval. Google Ads data will appear automatically once approved.'
