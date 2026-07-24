@@ -4,8 +4,9 @@ const { OAuth2Client } = require('google-auth-library');
 
 const TOKENS_PATH = path.join(__dirname, '..', 'tokens.json');
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+const ADWORDS_SCOPE = 'https://www.googleapis.com/auth/adwords';
 const USERINFO_SCOPE = 'https://www.googleapis.com/auth/userinfo.email';
-const SCOPES = ['https://www.googleapis.com/auth/analytics.readonly', SHEETS_SCOPE, USERINFO_SCOPE, 'openid'];
+const SCOPES = ['https://www.googleapis.com/auth/analytics.readonly', SHEETS_SCOPE, ADWORDS_SCOPE, USERINFO_SCOPE, 'openid'];
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
 
 function createOAuthClient() {
@@ -57,6 +58,15 @@ function hasSheetsScope(email) {
   if (!tokens || !tokens.refresh_token) return false;
   const granted = (tokens.scope || '').split(' ').filter(Boolean);
   return granted.includes(SHEETS_SCOPE);
+}
+
+// Same pattern as hasSheetsScope: tokens saved before the adwords scope was
+// added won't have it, so callers must detect this and prompt re-auth.
+function hasGoogleAdsScope(email) {
+  const tokens = loadTokens(email);
+  if (!tokens || !tokens.refresh_token) return false;
+  const granted = (tokens.scope || '').split(' ').filter(Boolean);
+  return granted.includes(ADWORDS_SCOPE);
 }
 
 function getAuthUrl(state) {
@@ -130,6 +140,7 @@ async function getAuthorizedClient(email) {
 module.exports = {
   isAuthenticated,
   hasSheetsScope,
+  hasGoogleAdsScope,
   getAuthUrl,
   handleCallback,
   getAuthorizedClient,

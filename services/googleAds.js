@@ -1,4 +1,4 @@
-const { getAuthorizedClient } = require('./googleAuth');
+const { getAuthorizedClient, hasGoogleAdsScope } = require('./googleAuth');
 const { monthDateRange } = require('./utils');
 
 const GOOGLE_ADS_API_VERSION = 'v24';
@@ -6,6 +6,17 @@ const GOOGLE_ADS_API_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_V
 
 function fmtCurrency(n) {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Same pattern as services/sheets.js#ensureSheetsScope — tokens saved before
+// the adwords scope was added won't have it, so this must be checked
+// explicitly rather than assumed present just because the user is signed in.
+function ensureGoogleAdsScope(email) {
+  if (!hasGoogleAdsScope(email)) {
+    const err = new Error('Your Google session needs additional permissions for Google Ads. Please sign out and sign in again.');
+    err.code = 'GOOGLE_ADS_SCOPE_MISSING';
+    throw err;
+  }
 }
 
 // Fetches Google Ads campaign performance for one reporting month via the
@@ -25,6 +36,7 @@ async function getGoogleAdsData(googleAdsCustomerId, monthStr, email) {
     err.code = 'GOOGLE_ADS_NO_ACCOUNT';
     throw err;
   }
+  ensureGoogleAdsScope(email);
 
   const client = await getAuthorizedClient(email);
   const accessToken = await client.getAccessToken();

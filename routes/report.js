@@ -100,6 +100,8 @@ router.post('/generate-report', async (req, res) => {
         } else if (googleAdsErr.code === 'GOOGLE_ADS_PERMISSION_DENIED') {
           googleAdsWarning =
             'Your Google account does not have access to this Google Ads account. Ask the account owner to add your email as an Admin.';
+        } else if (googleAdsErr.code === 'GOOGLE_ADS_SCOPE_MISSING') {
+          googleAdsWarning = googleAdsErr.message;
         } else if (googleAdsErr.code !== 'GOOGLE_ADS_NO_ACCOUNT') {
           googleAdsWarning = `Google Ads data could not be fetched: ${googleAdsErr.message}`;
         }
